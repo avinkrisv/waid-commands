@@ -1,0 +1,26 @@
+# Dependencies
+.dart_tool/
+.packages
+node_modules/
+build/
+.build/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.local
+
+# Generated
+*.g.dart
+*.freezed.dart
+*.mocks.dart
