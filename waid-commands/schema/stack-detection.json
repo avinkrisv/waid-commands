@@ -1,0 +1,13 @@
+{
+  "$schemaVersion": 1,
+  "_comment": "SLOT: StackDetectionRules — Phase 4 data-agent fills the stacks array with all 11 entries per .framework/contracts/data/StackDetectionRules.contract.md (flutter, rust, go, nodejs, python, java, ruby, php, dotnet, swift, unknown). This skeleton holds only the 'unknown' fallback so the file is well-formed.",
+  "stacks": [
+    {
+      "id": "unknown",
+      "humanName": "Unknown",
+      "manifestFiles": [],
+      "keyConfigFiles": [],
+      "entryPointHints": []
+    }
+  ]
+}

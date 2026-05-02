@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://waid-commands/schema/analysis.schema.json",
+  "title": "ProjectAnalysis",
+  "$comment": "SLOT: AnalysisSchema — Phase 4 data-agent fills this with the full schema per .framework/contracts/data/AnalysisSchema.contract.md. This skeleton placeholder is intentionally permissive so the validator can run during build.",
+  "type": "object",
+  "required": ["$schemaVersion"],
+  "properties": {
+    "$schemaVersion": { "type": "integer", "const": 1 }
+  }
+}

@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="auto">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="waid:generated-at" content="__WAID_GENERATED_AT__">
+  <meta name="waid:schema-version" content="">
+  <title>Under the Hood</title>
+  <style id="waid-style">__WAID_TEMPLATE_CSS__</style>
+  <script id="waid-data" type="application/json">__WAID_ANALYSIS_JSON__</script>
+  <!-- SLOT: HtmlTemplate — Phase 4 ui-agent replaces this skeleton with the full DOM contract per .framework/contracts/ui/HtmlTemplate.contract.md.
+       Required IDs at minimum: #waid-root, #waid-error, #waid-header, #waid-title, #waid-controls, #waid-view-toggle,
+       #waid-theme-toggle, #waid-layout, #waid-toc, #waid-toc-list, #waid-main, #waid-diagram-zoom, #waid-templates.
+       Each report section is a <section data-waid-section="{name}"> element. <template> elements feed safe DOM cloning. -->
+</head>
+<body id="waid-root" data-waid-theme="auto" data-waid-view="technical" data-waid-state="loading">
+  <div id="waid-error" hidden>Report data could not be loaded.</div>
+  <header id="waid-header">
+    <h1 id="waid-title">Under the Hood</h1>
+    <div id="waid-controls">
+      <button id="waid-view-toggle" aria-pressed="false">Technical / Layman</button>
+      <button id="waid-theme-toggle">Theme</button>
+    </div>
+  </header>
+  <div id="waid-layout">
+    <nav id="waid-toc" aria-label="Contents"><ol id="waid-toc-list"></ol></nav>
+    <main id="waid-main">
+      <p>waid-commands skeleton — HTML template not yet implemented. See <code>.framework/contracts/ui/HtmlTemplate.contract.md</code>.</p>
+    </main>
+  </div>
+  <dialog id="waid-diagram-zoom"></dialog>
+  <div id="waid-templates" hidden></div>
+  <script id="waid-script">__WAID_TEMPLATE_JS__</script>
+</body>
+</html>

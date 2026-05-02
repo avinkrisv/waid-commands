@@ -1,0 +1,78 @@
+# Assembly Manifest — waid-commands
+# Generated during Phase 3 (Skeleton). Consumed by the Assembler in Phase 5.
+#
+# Note: this project is a Claude Code plugin, not a multi-screen app. The
+# layered model is adapted: the "screen" is the rendered HTML report, and
+# "slots" are the placeholder substitutions / file slots that components fill.
+
+screens:
+  UnderTheHoodReport:
+    file: waid-commands/assets/template.html
+    layout: single_column_with_sidebar_toc
+    slots:
+      analysis_data:
+        component: AnalysisSchema
+        substitutes_into: "__WAID_ANALYSIS_JSON__ inside <script id='waid-data' type='application/json'>"
+        source: "JSON produced by SlashCommand at run time, conforming to schema/analysis.schema.json"
+        visible_when: always
+      design_tokens:
+        component: DesignTokens
+        substitutes_into: "__WAID_TEMPLATE_CSS__ inside <style id='waid-style'>"
+        source: "Inline contents of waid-commands/assets/template.css"
+        visible_when: always
+      interactivity:
+        component: InteractiveJS
+        substitutes_into: "__WAID_TEMPLATE_JS__ inside <script id='waid-script'>"
+        source: "Inline contents of waid-commands/assets/template.js"
+        callbacks:
+          init: "window.WAID.init(JSON.parse(document.getElementById('waid-data').textContent))"
+          set_view: "window.WAID.setView('technical' | 'layman')"
+          set_theme: "window.WAID.setTheme('light' | 'dark' | 'auto')"
+        visible_when: always
+      generated_at:
+        component: LauncherScript
+        substitutes_into: "__WAID_GENERATED_AT__ inside <meta name='waid:generated-at'>"
+        source: "ISO 8601 UTC timestamp from `date -u` at launcher run time"
+        visible_when: always
+
+# State wiring: the only persistent state is browser-local (localStorage)
+providers:
+  - name: ViewPreference
+    component: InteractiveJS
+    scope: app
+    storage: "localStorage['waid-view']"
+    default: "technical"
+  - name: ThemePreference
+    component: InteractiveJS
+    scope: app
+    storage: "localStorage['waid-theme']"
+    default: "auto"
+  - name: AnalysisData
+    component: InteractiveJS
+    scope: app
+    storage: "in-memory; read once from #waid-data on DOMContentLoaded"
+    default: "null (renders error banner)"
+
+# Background services: none. The plugin is fully event-driven.
+services: []
+
+# Assembly order — simplest first. Theme tokens land first so other components
+# can reference them; data schemas next; then UI; then logic; finally manifest + README.
+assembly_order:
+  - DesignTokens                # Layer 4: theme tokens (no dependencies)
+  - AnalysisSchema              # Layer 1: data schema for analysis output
+  - StackDetectionRules         # Layer 1: detection rules JSON
+  - HtmlTemplate                # Layer 2: HTML shell + DOM contract
+  - InteractiveJS               # Layer 2: render + interactions
+  - LauncherScript              # Layer 3: substitution + browser open
+  - SlashCommand                # Layer 3: prompt that drives the analysis
+  - PluginManifest              # Phase 5: .claude-plugin/plugin.json finalized
+  - README                      # Phase 5: install + usage instructions
+  - SmokeTests                  # Phase 6: fixture-based assertions
+
+# Runtime invocation order (when user runs /under-the-hood):
+#   SlashCommand → reads StackDetectionRules + AnalysisSchema → produces analysis.json
+#   → invokes LauncherScript with analysis.json
+#   → LauncherScript reads HtmlTemplate + DesignTokens (CSS) + InteractiveJS (JS)
+#   → substitutes __WAID_*__ placeholders → writes under-the-hood.html → opens in browser
+#   → InteractiveJS runs in browser, renders sections from embedded JSON

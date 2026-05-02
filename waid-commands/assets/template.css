@@ -1,0 +1,61 @@
+/* SLOT: DesignTokens — Phase 4 theme-agent fills this with the full token set + component styles
+   per .framework/contracts/theme/DesignTokens.contract.md.
+
+   Token families (canonical names):
+     --waid-color-bg-{base,surface,sunken,overlay}
+     --waid-color-text-{primary,secondary,tertiary,inverse,code}
+     --waid-color-accent[-subtle|-muted]
+     --waid-color-code-{bg,border}
+     --waid-color-severity-{low,medium,high}[-bg|-border]
+     --waid-color-chip-{bg,text,border}
+     --waid-color-toggle-{bg,thumb}
+     --waid-color-focus-ring
+     --waid-color-quiz-{correct,incorrect}
+     --waid-color-border[-subtle]
+     --waid-font-{sans,mono}
+     --waid-fs-{xs,sm,base,md,lg,xl,2xl,3xl}    (1.2 ratio, base 16px)
+     --waid-fw-{regular,medium,semibold,bold}
+     --waid-lh-{tight,snug,body,code}
+     --waid-ls-{tight,normal,wide}
+     --waid-space-{1,2,3,4,6,8,12,16}            (4px-based)
+     --waid-content-max-width, --waid-toc-width
+     --waid-radius-{sm,md,lg,xl,full,pill}
+     --waid-shadow-{xs,sm,md,lg,focus}
+     --waid-shadow-{card,tooltip,dialog}          (semantic aliases)
+     --waid-duration-{instant,fast,medium,normal,slow}
+     --waid-ease-{default,spring}
+     --waid-z-{header,toc,tooltip,dialog}
+
+   Theme switching: data-theme="light" | "dark" | "auto" on <html>. Auto resolves via prefers-color-scheme.
+   Reduced motion: @media (prefers-reduced-motion: reduce) zeroes out all duration tokens.
+*/
+
+:root {
+  /* skeleton placeholder — minimal tokens to keep the page readable until Phase 4 fills this in */
+  --waid-color-bg-base: #fefefe;
+  --waid-color-text-primary: #111318;
+  --waid-color-border: #dde1e7;
+  --waid-font-sans: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --waid-font-mono: "JetBrains Mono", "Fira Code", Menlo, Consolas, "Courier New", monospace;
+  --waid-fs-base: 1rem;
+  --waid-lh-body: 1.6;
+  --waid-space-4: 16px;
+}
+
+[data-theme="dark"] {
+  --waid-color-bg-base: #0e1014;
+  --waid-color-text-primary: #e8eaf0;
+  --waid-color-border: #2a2f3a;
+}
+
+body {
+  margin: 0;
+  font-family: var(--waid-font-sans);
+  font-size: var(--waid-fs-base);
+  line-height: var(--waid-lh-body);
+  color: var(--waid-color-text-primary);
+  background: var(--waid-color-bg-base);
+  padding: var(--waid-space-4);
+}
+
+#waid-error[hidden] { display: none; }

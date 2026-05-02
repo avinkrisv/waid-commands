@@ -51,12 +51,16 @@ This component owns two things: (1) the schema for the rules file format, and (2
         },
         "manifestFiles": {
           "type": "array",
-          "description": "Filenames (not paths) to look for in the project root or workspace package directories. Listed in priority order — the first file found is treated as the primary manifest. Glob patterns are NOT supported; exact filenames only.",
-          "minItems": 1,
+          "description": "Filenames (not paths) to look for in the project root or workspace package directories. Listed in priority order — the first file found is treated as the primary manifest. Exact filenames by default; entries are interpreted as glob patterns when `manifestFilesAreGlobs: true` is set on the same rule. May be empty for the `unknown` fallback entry only.",
           "items": {
             "type": "string",
             "minLength": 1
           }
+        },
+        "manifestFilesAreGlobs": {
+          "type": "boolean",
+          "default": false,
+          "description": "When true, every entry in `manifestFiles` is interpreted as a glob pattern (e.g. `*.csproj`) instead of an exact filename. The SlashCommand uses extension/filename pattern matching for these rules. Default false."
         },
         "keyConfigFiles": {
           "type": "array",
@@ -315,6 +319,7 @@ The file `schema/stack-detection.json` ships with this content (the schema above
       "id": "dotnet",
       "humanName": ".NET / C#",
       "manifestFiles": ["*.csproj", "*.fsproj", "*.vbproj", "global.json"],
+      "manifestFilesAreGlobs": true,
       "keyConfigFiles": [
         "Directory.Build.props",
         "Directory.Build.targets",
@@ -378,7 +383,7 @@ The file `schema/stack-detection.json` ships with this content (the schema above
 }
 ```
 
-> Note: the `unknown` entry has `manifestFiles: []` which violates the per-rule `minItems: 1` constraint declared in the schema. This is intentional — the schema's `minItems: 1` applies to *named* stacks, and the `unknown` fallback is exempt by convention. The build agent will relax this constraint in the final schema (either via `oneOf` of "named" vs "fallback" rule shapes, or by making `manifestFiles.minItems` 0 and validating non-emptiness in the SlashCommand prompt). Open question flagged below.
+> Note: the schema's `minItems` constraint on `manifestFiles` was dropped (resolution to open question 2 below). Empty `manifestFiles` is permitted at the schema level and is reserved for the `unknown` fallback entry. The SlashCommand prompt enforces non-emptiness for every named stack at runtime.
 
 ## Consumer Access Patterns
 
@@ -478,16 +483,20 @@ None. (Layer 1 components have no dependencies on other components.)
 - [ ] Smoke test: SlashCommand run against a project with no manifest detects `unknown` and sets `detectedStack: "Unknown"`
 - [ ] Smoke test: SlashCommand run against a monorepo with `package.json` + `pyproject.toml` sets `detectedStack: "Node.js / JavaScript + Python"` (or similar joined form)
 
+## Resolved Decisions (was Open Questions)
+
+1. **Glob support in `manifestFiles`** — *Resolved*: added explicit `manifestFilesAreGlobs: boolean` (default `false`) per rule. The `dotnet` entry sets it to `true`. The SlashCommand uses glob matching only when this flag is set.
+
+2. **`unknown` stack with empty `manifestFiles`** — *Resolved*: dropped `minItems` at the schema level. The SlashCommand prompt enforces non-emptiness for every named stack at runtime; the `unknown` fallback is the sole exemption.
+
+3. **Detection priority and conflict / multi-stack monorepos** — *Resolved*: SlashCommand caps `detectedStack` at the top 3 stacks (by manifest depth/file count). When more than 3 stacks are matched, the label is `"<a> + <b> + <c> + others"`. All matched stacks still appear in `tech_stack.entries`.
+
+4. **Language variants (TypeScript vs JavaScript)** — *Resolved*: kept implicit. SlashCommand prompt documents the convention: when `tsconfig.json` is present in `keyConfigFiles`, upgrade the `humanName` reported to `"Node.js / TypeScript"` for the analysis output. No schema change.
+
+5. **Framework sub-detection (React, Vue, Django, etc.)** — *Resolved (no change)*: framework detection stays in the SlashCommand prompt by reading manifest dependencies; rules file remains stack-level only. Two-phase approach is documented in SlashCommand contract.
+
+6. **Workspace scan depth** — *Resolved*: SlashCommand caps subdirectory scan at one level deep, max 20 subdirectory manifests. Documented in SlashCommand contract.
+
 ## Open Questions
 
-1. **Glob support in `manifestFiles`**: The `dotnet` entry uses `*.csproj` which is a glob, not an exact filename. The schema allows any string, but the detection logic must special-case glob patterns. Consider adding a boolean `manifestFilesAreGlobs: true` flag per entry to make this explicit, rather than having the slash command guess. For now, the slash command prompt must note that `*.csproj` requires extension scanning.
-
-2. **`unknown` stack exemption from `minItems: 1` on manifestFiles**: The schema's per-rule `manifestFiles.minItems: 1` is violated by the `unknown` fallback (whose `manifestFiles` is intentionally empty). Build agent must either (a) split the schema into "named" vs "fallback" rule shapes via `oneOf`, or (b) drop `minItems: 1` from the schema and validate non-emptiness in the SlashCommand prompt. (b) is simpler.
-
-3. **Detection priority and conflict**: If a project has both `package.json` (Node.js) and `pyproject.toml` (Python) at the root (not in subdirectories), the current spec says to join them. Should there be a maximum number of stacks reported? A monorepo with 10 stacks would produce an unwieldy `detectedStack` label. Consider capping at 3 primary stacks and noting "and others" for the label.
-
-4. **Language variants within a stack**: The `nodejs` entry covers both JavaScript and TypeScript. The distinction (TypeScript vs plain JS) is detected via `tsconfig.json` presence in `keyConfigFiles`. This is currently an implicit convention — the SlashCommand prompt must explicitly describe how to upgrade "Node.js / JavaScript" to "Node.js / TypeScript" in the analysis when `tsconfig.json` is found. Consider adding a `variantIndicators` field to formalize this.
-
-5. **Framework sub-detection**: React, Vue, Next.js, Django, FastAPI, etc. are not separate stack entries — they are detected by reading `package.json` or `pyproject.toml` dependencies. This is intentional (avoiding catalog bloat) but means the rules file alone is insufficient for sub-framework detection. The SlashCommand prompt must document this two-phase approach explicitly.
-
-6. **Depth of workspace scanning**: The `workspaceIndicators` field signals monorepo layout, but the rules do not specify how many directory levels deep to scan. Currently implied as one level (immediate subdirectories). A very large monorepo could have dozens of packages. The slash command prompt should impose a cap (e.g. scan at most 20 subdirectory manifests) to avoid excessive file reads.
+(none remaining)
