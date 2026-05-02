@@ -2,10 +2,221 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://waid-commands/schema/analysis.schema.json",
   "title": "ProjectAnalysis",
-  "$comment": "SLOT: AnalysisSchema — Phase 4 data-agent fills this with the full schema per .framework/contracts/data/AnalysisSchema.contract.md. This skeleton placeholder is intentionally permissive so the validator can run during build.",
+  "description": "The complete structured analysis Claude produces for a project. Every top-level section carries parallel technical and layman text variants so the HTML report can switch views without a network round-trip.",
   "type": "object",
-  "required": ["$schemaVersion"],
+  "required": [
+    "$schemaVersion",
+    "projectName",
+    "generatedAt",
+    "detectedStack",
+    "overview",
+    "tech_stack",
+    "architecture",
+    "algorithms",
+    "methodologies",
+    "pattern_rationale",
+    "pitfalls",
+    "glossary",
+    "quiz"
+  ],
+  "additionalProperties": false,
   "properties": {
-    "$schemaVersion": { "type": "integer", "const": 1 }
+    "$schemaVersion": {
+      "type": "integer",
+      "const": 1,
+      "description": "Schema version. Increment on breaking field changes. Consumers gate on this value."
+    },
+    "projectName": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Human-readable project name — e.g. the repository folder name or the name field from the top-level manifest."
+    },
+    "generatedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO-8601 UTC timestamp of when Claude produced this analysis."
+    },
+    "detectedStack": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The humanName of the detected primary stack (e.g. 'Node.js / JavaScript'). Set to 'Unknown' when no manifest matched. For multi-stack monorepos, join with ' + ' (e.g. 'Node.js / JavaScript + Python')."
+    },
+    "overview": {
+      "$ref": "#/$defs/DualSection",
+      "description": "High-level summary of what the project is and does."
+    },
+    "tech_stack": {
+      "type": "object",
+      "description": "Breakdown of every language, framework, tool, and runtime detected in the project.",
+      "required": ["technical", "layman", "entries"],
+      "additionalProperties": false,
+      "properties": {
+        "technical": { "type": "string", "minLength": 1, "description": "Technical narrative of the full technology stack." },
+        "layman": { "type": "string", "minLength": 1, "description": "Plain-English explanation of the technology stack for a non-developer." },
+        "entries": {
+          "type": "array",
+          "minItems": 1,
+          "description": "Individual stack entries, one per language/framework/tool.",
+          "items": {
+            "type": "object",
+            "required": ["name", "role", "version"],
+            "additionalProperties": false,
+            "properties": {
+              "name":    { "type": "string", "minLength": 1, "description": "Technology name, e.g. 'TypeScript'." },
+              "role":    { "type": "string", "minLength": 1, "description": "What this technology does, e.g. 'primary language'." },
+              "version": { "type": "string", "description": "Version string from manifest, or 'unknown' if not pinned." }
+            }
+          }
+        }
+      }
+    },
+    "architecture": {
+      "type": "object",
+      "description": "Structural overview of how the project is organized and how its major parts connect.",
+      "required": ["technical", "layman", "mermaid"],
+      "additionalProperties": false,
+      "properties": {
+        "technical": { "type": "string", "minLength": 1, "description": "Technical narrative: layers, modules, data flows, service boundaries." },
+        "layman":    { "type": "string", "minLength": 1, "description": "Plain-English analogy of how the pieces fit together." },
+        "mermaid":   { "type": "string", "description": "Valid Mermaid diagram source, or empty string when no meaningful diagram can be produced. Renderer shows 'No diagram available' on empty string." }
+      }
+    },
+    "algorithms": {
+      "type": "object",
+      "description": "Key algorithms or data-processing patterns used in the project.",
+      "required": ["technical", "layman", "entries"],
+      "additionalProperties": false,
+      "properties": {
+        "technical": { "type": "string", "minLength": 1 },
+        "layman":    { "type": "string", "minLength": 1 },
+        "entries": {
+          "type": "array",
+          "description": "May be empty for projects with no notable algorithms.",
+          "items": {
+            "type": "object",
+            "required": ["name", "technical", "layman"],
+            "additionalProperties": false,
+            "properties": {
+              "name":      { "type": "string", "minLength": 1 },
+              "technical": { "type": "string", "minLength": 1 },
+              "layman":    { "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      }
+    },
+    "methodologies": {
+      "type": "object",
+      "required": ["technical", "layman", "entries"],
+      "additionalProperties": false,
+      "description": "Development methodologies, workflows, and process patterns observed.",
+      "properties": {
+        "technical": { "type": "string", "minLength": 1 },
+        "layman":    { "type": "string", "minLength": 1 },
+        "entries": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "technical", "layman"],
+            "additionalProperties": false,
+            "properties": {
+              "name":      { "type": "string", "minLength": 1, "description": "e.g. 'Continuous Integration', 'Feature Flags'." },
+              "technical": { "type": "string", "minLength": 1 },
+              "layman":    { "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      }
+    },
+    "pattern_rationale": {
+      "type": "object",
+      "required": ["technical", "layman", "entries"],
+      "additionalProperties": false,
+      "description": "Explains why the observed patterns were chosen — reasoning, not just names.",
+      "properties": {
+        "technical": { "type": "string", "minLength": 1 },
+        "layman":    { "type": "string", "minLength": 1 },
+        "entries": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["pattern", "rationale_technical", "rationale_layman"],
+            "additionalProperties": false,
+            "properties": {
+              "pattern":              { "type": "string", "minLength": 1, "description": "e.g. 'Repository pattern'." },
+              "rationale_technical":  { "type": "string", "minLength": 1 },
+              "rationale_layman":     { "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      }
+    },
+    "pitfalls": {
+      "type": "object",
+      "required": ["technical", "layman", "entries"],
+      "additionalProperties": false,
+      "description": "Known risks, anti-patterns, technical debt, and gotchas.",
+      "properties": {
+        "technical": { "type": "string", "minLength": 1 },
+        "layman":    { "type": "string", "minLength": 1 },
+        "entries": {
+          "type": "array",
+          "minItems": 1,
+          "description": "At least one required. For pristine projects, use a low-severity note.",
+          "items": {
+            "type": "object",
+            "required": ["title", "severity", "technical", "layman"],
+            "additionalProperties": false,
+            "properties": {
+              "title":     { "type": "string", "minLength": 1 },
+              "severity":  { "type": "string", "enum": ["low", "medium", "high"], "description": "Renderer color-codes low=yellow, medium=orange, high=red. InteractiveJS defaults to 'medium' on invalid value." },
+              "technical": { "type": "string", "minLength": 1 },
+              "layman":    { "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      }
+    },
+    "glossary": {
+      "type": "array",
+      "description": "Definitions for key terms. Rendered as hover-tooltips and a dedicated section. May be empty.",
+      "items": {
+        "type": "object",
+        "required": ["term", "layman"],
+        "additionalProperties": false,
+        "properties": {
+          "term":      { "type": "string", "minLength": 1 },
+          "layman":    { "type": "string", "minLength": 1, "description": "Required. Plain-English definition." },
+          "technical": { "type": "string", "description": "Optional. Precise technical definition. Omit when no nuance beyond layman." }
+        }
+      }
+    },
+    "quiz": {
+      "type": "array",
+      "description": "Multiple-choice questions testing understanding of this project. May be empty.",
+      "items": {
+        "type": "object",
+        "required": ["question", "choices", "answerIndex", "explanation_layman", "explanation_technical"],
+        "additionalProperties": false,
+        "properties": {
+          "question":                { "type": "string", "minLength": 1 },
+          "choices":                 { "type": "array", "minItems": 2, "maxItems": 6, "items": { "type": "string", "minLength": 1 } },
+          "answerIndex":             { "type": "integer", "minimum": 0, "description": "0-based index into choices. Must be < choices.length — JSON Schema cannot enforce this cross-field constraint; InteractiveJS validates at runtime." },
+          "explanation_layman":      { "type": "string", "minLength": 1 },
+          "explanation_technical":   { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "DualSection": {
+      "type": "object",
+      "required": ["technical", "layman"],
+      "additionalProperties": false,
+      "properties": {
+        "technical": { "type": "string", "minLength": 1, "description": "Technical prose for the power-user view." },
+        "layman":    { "type": "string", "minLength": 1, "description": "Plain-English prose for the beginner view." }
+      }
+    }
   }
 }

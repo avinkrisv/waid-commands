@@ -1,13 +1,280 @@
 {
   "$schemaVersion": 1,
-  "_comment": "SLOT: StackDetectionRules — Phase 4 data-agent fills the stacks array with all 11 entries per .framework/contracts/data/StackDetectionRules.contract.md (flutter, rust, go, nodejs, python, java, ruby, php, dotnet, swift, unknown). This skeleton holds only the 'unknown' fallback so the file is well-formed.",
   "stacks": [
+    {
+      "id": "flutter",
+      "humanName": "Flutter / Dart",
+      "manifestFiles": ["pubspec.yaml"],
+      "keyConfigFiles": [
+        "analysis_options.yaml",
+        "dart_test.yaml",
+        ".flutter-plugins",
+        "flutter_launcher_icons.yaml"
+      ],
+      "entryPointHints": ["lib/main.dart", "lib/app.dart"],
+      "workspaceIndicators": ["melos.yaml", "packages/"],
+      "notes": "pubspec.yaml is unique to Dart/Flutter. Check for flutter: key inside to confirm Flutter (vs pure Dart)."
+    },
+    {
+      "id": "rust",
+      "humanName": "Rust",
+      "manifestFiles": ["Cargo.toml"],
+      "keyConfigFiles": [
+        "Cargo.lock",
+        "rust-toolchain.toml",
+        "rust-toolchain",
+        ".cargo/config.toml",
+        "clippy.toml",
+        ".rustfmt.toml"
+      ],
+      "entryPointHints": ["src/main.rs", "src/lib.rs"],
+      "workspaceIndicators": ["Cargo.toml"],
+      "notes": "Cargo.toml may contain [workspace] for monorepos. Check members field."
+    },
+    {
+      "id": "go",
+      "humanName": "Go",
+      "manifestFiles": ["go.mod"],
+      "keyConfigFiles": [
+        "go.sum",
+        ".golangci.yml",
+        ".golangci.yaml",
+        "Makefile"
+      ],
+      "entryPointHints": ["main.go", "cmd/main.go", "cmd/*/main.go"],
+      "workspaceIndicators": ["go.work"],
+      "notes": "go.work indicates a Go workspace (multi-module monorepo)."
+    },
+    {
+      "id": "nodejs",
+      "humanName": "Node.js / JavaScript",
+      "manifestFiles": ["package.json"],
+      "keyConfigFiles": [
+        "tsconfig.json",
+        "tsconfig.base.json",
+        ".eslintrc",
+        ".eslintrc.js",
+        ".eslintrc.json",
+        ".eslintrc.cjs",
+        ".eslintrc.yaml",
+        ".eslintrc.yml",
+        "eslint.config.js",
+        "eslint.config.mjs",
+        "prettier.config.js",
+        ".prettierrc",
+        ".prettierrc.json",
+        ".prettierrc.yaml",
+        "jest.config.js",
+        "jest.config.ts",
+        "vitest.config.ts",
+        "vitest.config.js",
+        "vite.config.ts",
+        "vite.config.js",
+        "next.config.js",
+        "next.config.ts",
+        "next.config.mjs",
+        "nuxt.config.ts",
+        "svelte.config.js",
+        "astro.config.mjs",
+        "webpack.config.js",
+        "rollup.config.js",
+        "esbuild.config.js",
+        ".babelrc",
+        "babel.config.js"
+      ],
+      "entryPointHints": [
+        "src/index.ts",
+        "src/index.js",
+        "src/main.ts",
+        "src/main.js",
+        "index.ts",
+        "index.js",
+        "app.ts",
+        "app.js",
+        "server.ts",
+        "server.js"
+      ],
+      "workspaceIndicators": [
+        "pnpm-workspace.yaml",
+        "lerna.json",
+        "nx.json",
+        "turbo.json",
+        "packages/",
+        "apps/"
+      ],
+      "notes": "tsconfig.json presence indicates TypeScript. Framework detection (React/Vue/Next/etc.) is done by reading package.json dependencies, not by additional manifest files."
+    },
+    {
+      "id": "python",
+      "humanName": "Python",
+      "manifestFiles": [
+        "pyproject.toml",
+        "setup.py",
+        "setup.cfg",
+        "requirements.txt"
+      ],
+      "keyConfigFiles": [
+        "requirements-dev.txt",
+        "requirements-test.txt",
+        "constraints.txt",
+        "tox.ini",
+        "pytest.ini",
+        ".flake8",
+        "mypy.ini",
+        ".mypy.ini",
+        "pyproject.toml",
+        "ruff.toml",
+        ".ruff.toml",
+        "Pipfile",
+        "poetry.lock",
+        "uv.lock",
+        "conda.yaml",
+        "environment.yml"
+      ],
+      "entryPointHints": [
+        "main.py",
+        "app.py",
+        "run.py",
+        "manage.py",
+        "src/main.py",
+        "src/app.py",
+        "__main__.py"
+      ],
+      "workspaceIndicators": ["packages/", "libs/", "services/"],
+      "notes": "pyproject.toml is the modern standard (PEP 518/621). setup.py and requirements.txt are legacy. Multiple manifest files may coexist in the same project."
+    },
+    {
+      "id": "java",
+      "humanName": "Java / JVM",
+      "manifestFiles": ["pom.xml", "build.gradle", "build.gradle.kts"],
+      "keyConfigFiles": [
+        "settings.gradle",
+        "settings.gradle.kts",
+        "gradle.properties",
+        "gradlew",
+        ".mvn/wrapper/maven-wrapper.properties",
+        "checkstyle.xml",
+        "spotbugs.xml",
+        "application.properties",
+        "application.yml"
+      ],
+      "entryPointHints": [
+        "src/main/java/**/*Application.java",
+        "src/main/java/**/Main.java",
+        "src/main/kotlin/**/*Application.kt"
+      ],
+      "workspaceIndicators": ["settings.gradle", "settings.gradle.kts"],
+      "notes": "pom.xml = Maven; build.gradle(.kts) = Gradle. Kotlin detection: look for .kt files and kotlin plugin in the build file. Spring Boot: spring-boot-starter in dependencies."
+    },
+    {
+      "id": "ruby",
+      "humanName": "Ruby",
+      "manifestFiles": ["Gemfile"],
+      "keyConfigFiles": [
+        "Gemfile.lock",
+        ".ruby-version",
+        ".rubocop.yml",
+        "Rakefile",
+        "config/application.rb",
+        "config/routes.rb"
+      ],
+      "entryPointHints": [
+        "app/controllers/application_controller.rb",
+        "config.ru",
+        "bin/rails",
+        "app.rb"
+      ],
+      "workspaceIndicators": [],
+      "notes": "Gemfile presence is definitive. config/application.rb confirms Rails."
+    },
+    {
+      "id": "php",
+      "humanName": "PHP",
+      "manifestFiles": ["composer.json"],
+      "keyConfigFiles": [
+        "composer.lock",
+        "phpunit.xml",
+        "phpunit.xml.dist",
+        "phpcs.xml",
+        ".php-cs-fixer.php",
+        "phpstan.neon",
+        "psalm.xml",
+        "artisan",
+        "webpack.mix.js",
+        "vite.config.js"
+      ],
+      "entryPointHints": [
+        "public/index.php",
+        "index.php",
+        "bootstrap/app.php",
+        "src/index.php"
+      ],
+      "workspaceIndicators": [],
+      "notes": "artisan file confirms Laravel. composer.json with symfony/* dependencies confirms Symfony."
+    },
+    {
+      "id": "dotnet",
+      "humanName": ".NET / C#",
+      "manifestFiles": ["*.csproj", "*.fsproj", "*.vbproj", "global.json"],
+      "manifestFilesAreGlobs": true,
+      "keyConfigFiles": [
+        "Directory.Build.props",
+        "Directory.Build.targets",
+        "NuGet.Config",
+        "nuget.config",
+        ".editorconfig",
+        "appsettings.json",
+        "appsettings.Development.json",
+        "launchSettings.json"
+      ],
+      "entryPointHints": [
+        "Program.cs",
+        "Startup.cs",
+        "src/**/Program.cs"
+      ],
+      "workspaceIndicators": ["*.sln"],
+      "notes": "*.csproj glob requires the slash command to use file-extension matching, not exact filename. *.sln indicates a Visual Studio solution with multiple projects."
+    },
+    {
+      "id": "swift",
+      "humanName": "Swift / Apple Platforms",
+      "manifestFiles": ["Package.swift"],
+      "keyConfigFiles": [
+        "Package.resolved",
+        ".swiftformat",
+        ".swiftlint.yml",
+        "Podfile",
+        "Cartfile",
+        "project.pbxproj"
+      ],
+      "entryPointHints": [
+        "Sources/**/main.swift",
+        "Sources/**/*App.swift",
+        "Sources/**/*Application.swift"
+      ],
+      "workspaceIndicators": [],
+      "notes": "Package.swift = Swift Package Manager. Podfile = CocoaPods (often alongside Xcode project). project.pbxproj inside *.xcodeproj indicates an Xcode project without SPM."
+    },
     {
       "id": "unknown",
       "humanName": "Unknown",
       "manifestFiles": [],
-      "keyConfigFiles": [],
-      "entryPointHints": []
+      "keyConfigFiles": [
+        "Makefile",
+        "makefile",
+        "GNUmakefile",
+        "CMakeLists.txt",
+        "meson.build",
+        "BUILD",
+        "BUILD.bazel",
+        "WORKSPACE",
+        "Dockerfile",
+        "docker-compose.yml",
+        "docker-compose.yaml"
+      ],
+      "entryPointHints": [],
+      "workspaceIndicators": [],
+      "notes": "Fallback when no known manifest is found. The SlashCommand should infer the stack from file extensions present in the repository (e.g. majority .c files suggests C, majority .sh files suggests shell scripting) and describe it in the analysis with appropriate uncertainty language."
     }
   ]
 }

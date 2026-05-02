@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="auto">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -8,28 +8,376 @@
   <title>Under the Hood</title>
   <style id="waid-style">__WAID_TEMPLATE_CSS__</style>
   <script id="waid-data" type="application/json">__WAID_ANALYSIS_JSON__</script>
-  <!-- SLOT: HtmlTemplate — Phase 4 ui-agent replaces this skeleton with the full DOM contract per .framework/contracts/ui/HtmlTemplate.contract.md.
-       Required IDs at minimum: #waid-root, #waid-error, #waid-header, #waid-title, #waid-controls, #waid-view-toggle,
-       #waid-theme-toggle, #waid-layout, #waid-toc, #waid-toc-list, #waid-main, #waid-diagram-zoom, #waid-templates.
-       Each report section is a <section data-waid-section="{name}"> element. <template> elements feed safe DOM cloning. -->
+  <style>
+    /* View-conditional content — show/hide is CSS-only */
+    [data-waid-view="technical"] { display: none; }
+    [data-waid-view="layman"]    { display: none; }
+    #waid-root[data-waid-view="technical"] [data-waid-view="technical"] { display: revert; }
+    #waid-root[data-waid-view="layman"]    [data-waid-view="layman"]    { display: revert; }
+
+    /* Section collapse/expand via CSS grid transition (~220ms) */
+    .waid-section-body {
+      display: grid;
+      grid-template-rows: 1fr;
+      transition: grid-template-rows var(--waid-duration-medium, 220ms) var(--waid-ease-default, ease-in-out);
+      overflow: hidden;
+    }
+    .waid-section-body[data-collapsed="true"] {
+      grid-template-rows: 0fr;
+    }
+    .waid-section-body > * { min-height: 0; }
+
+    /* TOC active item */
+    .waid-toc-item--active { font-weight: var(--waid-fw-semibold, 600); }
+    .waid-toc-item--empty  { opacity: 0.5; }
+
+    /* Mermaid states */
+    .waid-mermaid-pending, .waid-mermaid-fallback { padding: var(--waid-space-4, 1rem); }
+    .waid-mermaid-loaded { opacity: 1; transition: opacity var(--waid-duration-fast, 150ms) var(--waid-ease-default, ease-in-out); }
+
+    /* Quiz */
+    button.waid-quiz-correct { background: var(--waid-color-quiz-correct, #1e7a4f); color: var(--waid-color-text-inverse, #fff); }
+    button.waid-quiz-wrong   { background: var(--waid-color-quiz-incorrect, #b02020); color: var(--waid-color-text-inverse, #fff); }
+
+    /* Glossary tooltip */
+    .waid-glossary-term { cursor: help; border-bottom: 1px dotted currentColor; }
+    .waid-tooltip {
+      position: fixed;
+      z-index: var(--waid-z-tooltip, 400);
+      background: var(--waid-color-bg-overlay, #fff);
+      border: 1px solid var(--waid-color-border, #dde1e7);
+      box-shadow: var(--waid-shadow-tooltip);
+      padding: var(--waid-space-2, 0.5rem) var(--waid-space-3, 0.75rem);
+      border-radius: var(--waid-radius-md, 6px);
+      font-size: var(--waid-fs-sm, 0.8125rem);
+      max-width: 18rem;
+      pointer-events: none;
+    }
+
+    /* Diagram zoom */
+    #waid-arch-diagram { max-width: 100%; overflow-x: auto; cursor: zoom-in; }
+    #waid-diagram-zoom { max-width: 90vw; max-height: 90vh; overflow: auto; padding: var(--waid-space-4, 1rem); border-radius: var(--waid-radius-lg, 10px); box-shadow: var(--waid-shadow-dialog); }
+    #waid-diagram-zoom::backdrop { background: rgba(0,0,0,0.5); }
+
+    /* Warning banner */
+    .waid-schema-warning {
+      background: var(--waid-color-severity-medium-bg, #fef9ec);
+      border: 1px solid var(--waid-color-severity-medium-border, #f5d48a);
+      color: var(--waid-color-severity-medium, #92620a);
+      padding: var(--waid-space-3, 0.75rem) var(--waid-space-4, 1rem);
+      border-radius: var(--waid-radius-md, 6px);
+      margin-bottom: var(--waid-space-4, 1rem);
+    }
+
+    /* Empty notice */
+    .waid-empty-notice { color: var(--waid-color-text-secondary, #4a5260); font-style: italic; }
+
+    /* Severity badges */
+    [data-severity="low"]    { border-color: var(--waid-color-severity-low-border, #a3dfc0); background: var(--waid-color-severity-low-bg, #edfaf3); }
+    [data-severity="medium"] { border-color: var(--waid-color-severity-medium-border, #f5d48a); background: var(--waid-color-severity-medium-bg, #fef9ec); }
+    [data-severity="high"]   { border-color: var(--waid-color-severity-high-border, #f5baba); background: var(--waid-color-severity-high-bg, #fff0f0); }
+
+    /* Mobile TOC FAB */
+    #waid-toc-fab { display: none; }
+    @media (max-width: 767px) {
+      #waid-toc { display: none; }
+      #waid-toc-fab { display: block; position: fixed; bottom: var(--waid-space-4, 1rem); right: var(--waid-space-4, 1rem); z-index: var(--waid-z-toc, 300); }
+      #waid-toc-drawer { display: none; position: fixed; inset: auto 0 0 0; z-index: var(--waid-z-toc, 300); background: var(--waid-color-bg-overlay, #fff); border-top: 1px solid var(--waid-color-border, #dde1e7); padding: var(--waid-space-4, 1rem); max-height: 60vh; overflow-y: auto; }
+      #waid-toc-drawer.waid-drawer-open { display: block; }
+    }
+
+    /* Print styles */
+    @media print {
+      #waid-toc, #waid-controls, #waid-toc-fab { display: none !important; }
+      * { position: static !important; }
+      .waid-section-body[data-collapsed="true"] { grid-template-rows: 1fr !important; }
+    }
+
+    /* Reduced motion */
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        transition-duration: 0ms !important;
+        animation-duration: 0ms !important;
+      }
+    }
+  </style>
 </head>
 <body id="waid-root" data-waid-theme="auto" data-waid-view="technical" data-waid-state="loading">
-  <div id="waid-error" hidden>Report data could not be loaded.</div>
-  <header id="waid-header">
+
+  <!-- Error banner (hidden until init failure) -->
+  <div id="waid-error" hidden>
+    <p>Report data could not be loaded.</p>
+  </div>
+
+  <!-- Sticky page header -->
+  <header id="waid-header" style="position:sticky;top:0;z-index:var(--waid-z-header,500)">
     <h1 id="waid-title">Under the Hood</h1>
     <div id="waid-controls">
-      <button id="waid-view-toggle" aria-pressed="false">Technical / Layman</button>
-      <button id="waid-theme-toggle">Theme</button>
+      <button id="waid-view-toggle" aria-pressed="false">
+        <span>Technical</span>
+        <span>Layman</span>
+      </button>
+      <button id="waid-theme-toggle" aria-label="Toggle theme">&#9790;</button>
     </div>
   </header>
+
+  <!-- Two-column layout: TOC sidebar + main content -->
   <div id="waid-layout">
-    <nav id="waid-toc" aria-label="Contents"><ol id="waid-toc-list"></ol></nav>
+    <nav id="waid-toc" aria-label="Contents" style="position:sticky;top:var(--waid-space-4,1rem);z-index:var(--waid-z-toc,300)">
+      <ol id="waid-toc-list"><!-- populated by JS --></ol>
+    </nav>
+
     <main id="waid-main">
-      <p>waid-commands skeleton — HTML template not yet implemented. See <code>.framework/contracts/ui/HtmlTemplate.contract.md</code>.</p>
+
+      <!-- Architecture section with Mermaid diagram -->
+      <section id="waid-section-overview" data-waid-section="overview" hidden>
+        <header class="waid-section-header">
+          <button class="waid-section-toggle" aria-expanded="true" aria-controls="waid-section-body-overview">
+            <span class="waid-section-title">Overview</span>
+            <span class="waid-section-badge" hidden></span>
+          </button>
+        </header>
+        <div id="waid-section-body-overview" class="waid-section-body">
+          <!-- JS populates from overview.technical / overview.layman -->
+        </div>
+      </section>
+
+      <section id="waid-section-tech-stack" data-waid-section="tech-stack" hidden>
+        <header class="waid-section-header">
+          <button class="waid-section-toggle" aria-expanded="true" aria-controls="waid-section-body-tech-stack">
+            <span class="waid-section-title">Tech Stack</span>
+            <span class="waid-section-badge" hidden></span>
+          </button>
+        </header>
+        <div id="waid-section-body-tech-stack" class="waid-section-body">
+          <!-- JS clones tpl-tech-stack-entry here -->
+        </div>
+      </section>
+
+      <section id="waid-section-architecture" data-waid-section="architecture" hidden>
+        <header class="waid-section-header">
+          <button class="waid-section-toggle" aria-expanded="true" aria-controls="waid-section-body-architecture">
+            <span class="waid-section-title">Architecture</span>
+            <span class="waid-section-badge" hidden></span>
+          </button>
+        </header>
+        <div id="waid-section-body-architecture" class="waid-section-body">
+          <!-- Mermaid diagram container (JS renders SVG here) -->
+          <div id="waid-arch-diagram">
+            <div class="waid-mermaid-pending">Rendering diagram&#8230;</div>
+          </div>
+          <!-- Narrative text populated by JS -->
+        </div>
+      </section>
+
+      <section id="waid-section-algorithms" data-waid-section="algorithms" hidden>
+        <header class="waid-section-header">
+          <button class="waid-section-toggle" aria-expanded="true" aria-controls="waid-section-body-algorithms">
+            <span class="waid-section-title">Key Algorithms</span>
+            <span class="waid-section-badge" hidden></span>
+          </button>
+        </header>
+        <div id="waid-section-body-algorithms" class="waid-section-body">
+          <!-- JS clones tpl-algo-entry here -->
+        </div>
+      </section>
+
+      <section id="waid-section-methodologies" data-waid-section="methodologies" hidden>
+        <header class="waid-section-header">
+          <button class="waid-section-toggle" aria-expanded="true" aria-controls="waid-section-body-methodologies">
+            <span class="waid-section-title">Methodologies</span>
+            <span class="waid-section-badge" hidden></span>
+          </button>
+        </header>
+        <div id="waid-section-body-methodologies" class="waid-section-body">
+          <!-- JS clones tpl-method-entry here -->
+        </div>
+      </section>
+
+      <section id="waid-section-pattern-rationale" data-waid-section="pattern-rationale" hidden>
+        <header class="waid-section-header">
+          <button class="waid-section-toggle" aria-expanded="true" aria-controls="waid-section-body-pattern-rationale">
+            <span class="waid-section-title">Pattern Rationale</span>
+            <span class="waid-section-badge" hidden></span>
+          </button>
+        </header>
+        <div id="waid-section-body-pattern-rationale" class="waid-section-body">
+          <!-- JS clones tpl-pattern-entry here -->
+        </div>
+      </section>
+
+      <section id="waid-section-pitfalls" data-waid-section="pitfalls" hidden>
+        <header class="waid-section-header">
+          <button class="waid-section-toggle" aria-expanded="true" aria-controls="waid-section-body-pitfalls">
+            <span class="waid-section-title">Pitfalls</span>
+            <span class="waid-section-badge" hidden></span>
+          </button>
+        </header>
+        <div id="waid-section-body-pitfalls" class="waid-section-body">
+          <!-- JS clones tpl-pitfall-entry here -->
+        </div>
+      </section>
+
+      <section id="waid-section-glossary" data-waid-section="glossary" hidden>
+        <header class="waid-section-header">
+          <button class="waid-section-toggle" aria-expanded="true" aria-controls="waid-section-body-glossary">
+            <span class="waid-section-title">Glossary</span>
+            <span class="waid-section-badge" hidden></span>
+          </button>
+        </header>
+        <div id="waid-section-body-glossary" class="waid-section-body">
+          <!-- JS clones tpl-glossary-entry here -->
+        </div>
+      </section>
+
+      <section id="waid-section-quiz" data-waid-section="quiz" hidden>
+        <header class="waid-section-header">
+          <button class="waid-section-toggle" aria-expanded="true" aria-controls="waid-section-body-quiz">
+            <span class="waid-section-title">Check Your Understanding</span>
+            <span class="waid-section-badge" hidden></span>
+          </button>
+        </header>
+        <div id="waid-section-body-quiz" class="waid-section-body">
+          <!-- JS clones tpl-quiz-entry here -->
+        </div>
+      </section>
+
     </main>
   </div>
-  <dialog id="waid-diagram-zoom"></dialog>
-  <div id="waid-templates" hidden></div>
+
+  <!-- Diagram zoom dialog -->
+  <dialog id="waid-diagram-zoom" aria-label="Diagram zoom view">
+    <div class="waid-diagram-zoom-content"></div>
+    <form method="dialog">
+      <button type="submit" aria-label="Close diagram">&#10005;</button>
+    </form>
+  </dialog>
+
+  <!-- Mobile TOC fab + drawer -->
+  <button id="waid-toc-fab" aria-controls="waid-toc-drawer" aria-expanded="false">Contents</button>
+  <nav id="waid-toc-drawer" aria-label="Contents (mobile)" aria-hidden="true">
+    <!-- Mirror of #waid-toc-list populated by JS -->
+  </nav>
+
+  <!-- Template elements — safe DOM cloning, never rendered directly -->
+  <div id="waid-templates" hidden>
+
+    <!-- TOC item -->
+    <template id="tpl-toc-item">
+      <li class="waid-toc-item">
+        <a class="waid-toc-link" href="#" role="listitem">
+          <span data-waid-slot="label"></span>
+        </a>
+      </li>
+    </template>
+
+    <!-- Tech stack card -->
+    <template id="tpl-tech-stack-entry">
+      <article class="waid-tech-stack-entry">
+        <header class="waid-entry-header">
+          <span class="waid-chip" data-waid-slot="name"></span>
+          <span class="waid-chip waid-chip--kind" data-waid-slot="kind"></span>
+          <span class="waid-chip waid-chip--version" data-waid-slot="version"></span>
+        </header>
+        <div class="waid-entry-body">
+          <p data-waid-view="technical" data-waid-slot="technical"></p>
+          <p data-waid-view="layman" data-waid-slot="layman"></p>
+          <p class="waid-analogy" data-waid-slot="analogy"></p>
+        </div>
+      </article>
+    </template>
+
+    <!-- Algorithm entry -->
+    <template id="tpl-algo-entry">
+      <article class="waid-algo-entry">
+        <h3 class="waid-entry-title" data-waid-slot="name"></h3>
+        <div class="waid-entry-body">
+          <p data-waid-view="technical" data-waid-slot="technical"></p>
+          <p data-waid-view="layman" data-waid-slot="layman"></p>
+          <p class="waid-complexity" data-waid-slot="complexity"></p>
+          <p class="waid-location" data-waid-slot="location"></p>
+        </div>
+      </article>
+    </template>
+
+    <!-- Methodology entry -->
+    <template id="tpl-method-entry">
+      <article class="waid-method-entry">
+        <h3 class="waid-entry-title" data-waid-slot="name"></h3>
+        <div class="waid-entry-body">
+          <p data-waid-view="technical" data-waid-slot="technical"></p>
+          <p data-waid-view="layman" data-waid-slot="layman"></p>
+        </div>
+      </article>
+    </template>
+
+    <!-- Pattern rationale entry -->
+    <template id="tpl-pattern-entry">
+      <article class="waid-pattern-entry">
+        <h3 class="waid-entry-title" data-waid-slot="pattern"></h3>
+        <div class="waid-entry-body">
+          <p data-waid-view="technical" data-waid-slot="technical"></p>
+          <p data-waid-view="layman" data-waid-slot="layman"></p>
+          <p class="waid-tradeoffs" data-waid-slot="tradeoffs"></p>
+          <details class="waid-why">
+            <summary>Why this pattern?</summary>
+            <p data-waid-slot="why"></p>
+          </details>
+        </div>
+      </article>
+    </template>
+
+    <!-- Pitfall entry -->
+    <template id="tpl-pitfall-entry">
+      <article class="waid-pitfall-entry" data-severity="medium">
+        <header class="waid-entry-header">
+          <span class="waid-pitfall-title" data-waid-slot="title"></span>
+          <span class="waid-severity-badge" data-waid-slot="severity"></span>
+        </header>
+        <div class="waid-entry-body">
+          <p data-waid-view="technical" data-waid-slot="technical"></p>
+          <p data-waid-view="layman" data-waid-slot="layman"></p>
+        </div>
+      </article>
+    </template>
+
+    <!-- Glossary entry -->
+    <template id="tpl-glossary-entry">
+      <dl class="waid-glossary-entry">
+        <dt class="waid-glossary-term" tabindex="0" data-waid-slot="term"></dt>
+        <dd data-waid-view="layman" data-waid-slot="layman"></dd>
+        <dd data-waid-view="technical" data-waid-slot="technical"></dd>
+      </dl>
+    </template>
+
+    <!-- Quiz question container -->
+    <template id="tpl-quiz-entry">
+      <article class="waid-quiz-entry">
+        <p class="waid-quiz-question" data-waid-slot="question"></p>
+        <div class="waid-quiz-choices">
+          <!-- tpl-quiz-choice elements cloned here by JS -->
+        </div>
+        <div class="waid-quiz-explanation" hidden>
+          <p data-waid-view="layman" data-waid-slot="explanation-layman"></p>
+          <p data-waid-view="technical" data-waid-slot="explanation-technical"></p>
+        </div>
+      </article>
+    </template>
+
+    <!-- Quiz individual answer button -->
+    <template id="tpl-quiz-choice">
+      <button type="button" class="waid-quiz-choice">
+        <span data-waid-slot="label"></span>
+      </button>
+    </template>
+
+  </div>
+
+  <!-- Mermaid CDN (deferred — does not block first paint) -->
+  <script defer src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+
+  <!-- Inline JS (launcher substitutes full InteractiveJS source here) -->
   <script id="waid-script">__WAID_TEMPLATE_JS__</script>
+
 </body>
 </html>
