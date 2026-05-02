@@ -23,10 +23,10 @@ agent_logs: []
 |---------------------|-------|----------|-------|-------|--------|
 | AnalysisSchema      | 1     | -        | -     | -     | -      |
 | StackDetectionRules | 1     | -        | -     | -     | -      |
-| HtmlTemplate        | 2     | -        | -     | -     | -      |
-| InteractiveJS       | 2     | -        | -     | -     | -      |
-| SlashCommand        | 3     | -        | -     | -     | -      |
-| LauncherScript      | 3     | -        | -     | -     | -      |
+| HtmlTemplate        | 2     | done     | -     | -     | -      |
+| InteractiveJS       | 2     | done     | -     | -     | -      |
+| SlashCommand        | 3     | done     | -     | -     | -      |
+| LauncherScript      | 3     | done     | -     | -     | -      |
 | DesignTokens        | 4     | -        | -     | -     | -      |
 
 ## Assembly
