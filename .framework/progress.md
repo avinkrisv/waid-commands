@@ -1,15 +1,16 @@
 # Project Progress
 
 ## Current Phase
-phase: 4
+phase: 5
 status: complete
-next_action: Phase 5 (Assembly)
+next_action: Phase 6 (Polish + smoke tests)
 
 ## Phase History
 - phase: 1, completed: 2026-04-20, output: .framework/plan.md
 - phase: 2, completed: 2026-04-20, output: .framework/contracts/{data,ui,logic,theme}/*.contract.md (7 files)
 - phase: 3, completed: 2026-04-20, output: waid-commands/ skeleton (11 files) + .framework/assembly_manifest.yaml
 - phase: 4, completed: 2026-04-20, output: 4 parallel build agents (data, ui, theme, logic) filled all stubs — schemas, html, css, js, slash command, launcher
+- phase: 5, completed: 2026-04-20, output: plugin manifest finalized (v0.1.0), README written, top-level repo README, agent logs moved out of plugin dir, gitignore updated
 
 ## Session Handoff
 last_session: 2026-04-20
@@ -37,4 +38,4 @@ agent_logs:
 
 | Screen              | Slots | Wired   | Tests   | Status  |
 |---------------------|-------|---------|---------|---------|
-| UnderTheHoodReport  | -     | pending | pending | pending |
+| UnderTheHoodReport  | 4     | done    | pending | wired   |

@@ -24,3 +24,7 @@ Thumbs.db
 *.g.dart
 *.freezed.dart
 *.mocks.dart
+
+# Trellis sub-agent logs (project-level only, never inside the plugin)
+.agent-logs/
+waid-commands/.agent-logs/
