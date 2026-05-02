@@ -1,0 +1,122 @@
+{
+  "$schemaVersion": 1,
+  "projectName": "rich-fixture",
+  "generatedAt": "2026-04-20T12:00:00Z",
+  "detectedStack": "Node.js / TypeScript",
+  "overview": {
+    "technical": "A representative TypeScript Node.js service exposing a REST API backed by Postgres. Uses Express, Zod for validation, and a repository pattern over node-postgres. Production deployment runs on Fly.io with structured JSON logging via pino.",
+    "layman": "Think of a small kitchen that takes orders over the phone. The phone line is the API, the recipes are the validation rules, and the pantry is the database. The whole kitchen is set up to be reliable and to log every order so you can review them later."
+  },
+  "tech_stack": {
+    "technical": "Node.js 20 LTS as runtime, TypeScript 5.4 as language, Express 4 as HTTP layer, Zod 3 for runtime validation, node-postgres 8 for Postgres access, pino 9 for logs, vitest 1 for tests, tsx for dev runtime, esbuild for production bundle.",
+    "layman": "JavaScript is the language we write in. TypeScript is JavaScript with safety rails to catch mistakes earlier. Express handles incoming requests. Zod makes sure the data we receive matches what we expect. The rest are tools for talking to the database, logging, and testing.",
+    "entries": [
+      { "name": "TypeScript",   "role": "primary language",       "version": "5.4.0" },
+      { "name": "Node.js",      "role": "runtime",                 "version": "20.x" },
+      { "name": "Express",      "role": "HTTP framework",          "version": "4.19.2" },
+      { "name": "Zod",          "role": "runtime validation",      "version": "3.23.0" },
+      { "name": "node-postgres","role": "Postgres client",         "version": "8.11.3" },
+      { "name": "pino",         "role": "logging",                 "version": "9.0.0" },
+      { "name": "vitest",       "role": "testing framework",       "version": "1.4.0" }
+    ]
+  },
+  "architecture": {
+    "technical": "Layered architecture: HTTP routes → controllers → services → repositories → Postgres. Repositories wrap node-postgres pools and expose typed CRUD operations. Services contain business logic and orchestrate multiple repositories within transactions. Controllers translate HTTP to service calls and back.",
+    "layman": "The code is organized in floors. The top floor takes phone calls. The next floor decides what to do. The bottom floors actually look things up in the pantry. Each floor only talks to the one directly below it.",
+    "mermaid": "flowchart LR\n  Client[Client] --> Routes\n  Routes --> Controllers\n  Controllers --> Services\n  Services --> Repos[Repositories]\n  Repos --> DB[(Postgres)]\n  Services -.-> Logger[pino logger]"
+  },
+  "algorithms": {
+    "technical": "No advanced algorithms. The most notable computation is a transaction-bounded debit/credit pair when transferring funds between accounts: the repository acquires a single connection, opens a transaction, performs both updates, commits, and releases.",
+    "layman": "There is one place where two changes have to happen together — moving money from one account to another. The system makes sure both changes succeed or both fail; you cannot have money in mid-air.",
+    "entries": [
+      {
+        "name": "Transactional transfer",
+        "technical": "Acquires a single client from the pool, BEGIN, two UPDATEs guarded by row locks, COMMIT or ROLLBACK on error, release.",
+        "layman": "Lock the two accounts, do both updates, save them together — or undo everything if anything goes wrong."
+      }
+    ]
+  },
+  "methodologies": {
+    "technical": "Continuous integration via GitHub Actions on every PR. Schema migrations live in /migrations and are applied with a hand-rolled migrate script. Logging is structured JSON via pino, parsed by the deployment platform.",
+    "layman": "Every change is automatically checked before it can be merged. The database structure changes through small numbered files that the team applies in order. Logs are written in a structured way so they can be searched.",
+    "entries": [
+      {
+        "name": "Continuous Integration",
+        "technical": "GitHub Actions runs lint, typecheck, vitest on every PR.",
+        "layman": "An automatic checker runs every time someone proposes a change."
+      },
+      {
+        "name": "Schema migrations",
+        "technical": "Numbered SQL files in /migrations applied by a custom migrate.ts.",
+        "layman": "Database changes happen through small, ordered scripts."
+      }
+    ]
+  },
+  "pattern_rationale": {
+    "technical": "The repository pattern was chosen to keep SQL out of services and to make testing easier (services can be tested with fake repositories). Zod validation at the controller boundary means downstream code can rely on shape guarantees without runtime checks.",
+    "layman": "We separate the part that talks to the database from the part that decides what to do. This makes the code easier to test and easier to change. We also check incoming requests at the door so the rest of the code does not have to second-guess the data.",
+    "entries": [
+      {
+        "pattern": "Repository pattern",
+        "rationale_technical": "Isolates SQL, simplifies unit tests via fake repos, allows swapping data store later.",
+        "rationale_layman": "Keeps the database talk in one place so you can change it later without touching everything."
+      }
+    ]
+  },
+  "pitfalls": {
+    "technical": "Two notable risks observed in the code.",
+    "layman": "Two things to keep an eye on.",
+    "entries": [
+      {
+        "title": "Connection pool size not explicit",
+        "severity": "medium",
+        "technical": "The Pool constructor uses defaults. Under load, this can starve connections or exhaust Postgres. Set max explicitly per environment.",
+        "layman": "The system uses default settings for how many database conversations it can have at once. This can cause traffic jams when many people use it at the same time."
+      },
+      {
+        "title": "No retry on transient DB errors",
+        "severity": "low",
+        "technical": "Transient failures (network blips, restarts) bubble straight up. A small retry-with-backoff layer at the repo would improve perceived reliability.",
+        "layman": "When the database briefly hiccups, the app gives up immediately. Trying again after a moment would smooth this out."
+      }
+    ]
+  },
+  "glossary": [
+    {
+      "term": "Repository pattern",
+      "layman": "A way of organizing code so that all database talk happens in one set of files.",
+      "technical": "An abstraction over a data store that exposes typed CRUD operations and hides the query language."
+    },
+    {
+      "term": "Transaction",
+      "layman": "A group of changes that all succeed together or all fail together.",
+      "technical": "A unit of work bracketed by BEGIN and COMMIT/ROLLBACK that provides ACID guarantees."
+    }
+  ],
+  "quiz": [
+    {
+      "question": "What does Zod do in this project?",
+      "choices": [
+        "Connects to the database",
+        "Validates incoming request data",
+        "Logs structured JSON",
+        "Runs the tests"
+      ],
+      "answerIndex": 1,
+      "explanation_technical": "Zod is used at the controller boundary to validate request bodies and parse query params. Failure to validate produces a 400.",
+      "explanation_layman": "Zod is the door check — it makes sure the data coming in matches what the rest of the code expects."
+    },
+    {
+      "question": "Why are repositories used instead of putting SQL directly in services?",
+      "choices": [
+        "Repositories run faster than direct SQL",
+        "It separates database talk from business logic",
+        "Postgres requires it",
+        "It hides the database from the developer entirely"
+      ],
+      "answerIndex": 1,
+      "explanation_technical": "The repository pattern isolates SQL into a layer that services consume via typed methods, simplifying tests and future migrations.",
+      "explanation_layman": "It puts all the database conversations in one place so the rest of the code can stay focused on the business rules."
+    }
+  ]
+}

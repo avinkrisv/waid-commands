@@ -1,0 +1,51 @@
+{
+  "$schemaVersion": 1,
+  "projectName": "minimal-fixture",
+  "generatedAt": "2026-04-20T12:00:00Z",
+  "detectedStack": "Unknown",
+  "overview": {
+    "technical": "A minimal test fixture that exercises every required field in ProjectAnalysis with the smallest possible content.",
+    "layman": "A tiny example project used to make sure the report system works."
+  },
+  "tech_stack": {
+    "technical": "No dependencies; this fixture exists solely for smoke-testing.",
+    "layman": "There are no real tools used by this fixture — it is just a test placeholder.",
+    "entries": [
+      { "name": "test-fixture", "role": "smoke target", "version": "1.0.0" }
+    ]
+  },
+  "architecture": {
+    "technical": "Single-file architecture. No layers, no modules.",
+    "layman": "Imagine a single sticky note. That is the entire project.",
+    "mermaid": ""
+  },
+  "algorithms": {
+    "technical": "None.",
+    "layman": "Nothing fancy here.",
+    "entries": []
+  },
+  "methodologies": {
+    "technical": "Smoke testing: assert the launcher produces well-formed HTML.",
+    "layman": "We check that the report builder is not broken before we trust it.",
+    "entries": []
+  },
+  "pattern_rationale": {
+    "technical": "Minimal fixture chosen to verify schema compliance with the smallest valid payload.",
+    "layman": "We use a tiny example so we can quickly check things work.",
+    "entries": []
+  },
+  "pitfalls": {
+    "technical": "No real pitfalls in a fixture.",
+    "layman": "Nothing to worry about here.",
+    "entries": [
+      {
+        "title": "This is a test fixture, not a real project",
+        "severity": "low",
+        "technical": "Treat any insights as non-actionable; the fixture is synthetic.",
+        "layman": "This is just a test, so do not learn anything serious from it."
+      }
+    ]
+  },
+  "glossary": [],
+  "quiz": []
+}
