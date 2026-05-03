@@ -1,0 +1,14 @@
+{
+  "name": "waid-commands-marketplace",
+  "owner": {
+    "name": "avinkrisv"
+  },
+  "plugins": [
+    {
+      "name": "waid-commands",
+      "source": "./waid-commands",
+      "description": "What Am I Doing — explains the project you're in. Generates a self-contained HTML report with parallel Technical and Layman views covering tech stack, architecture, methodologies, pattern rationale, pitfalls, glossary, and quiz.",
+      "version": "0.1.0"
+    }
+  ]
+}
