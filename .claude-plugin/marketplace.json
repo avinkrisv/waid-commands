@@ -13,7 +13,7 @@
         "ref": "main"
       },
       "description": "What Am I Doing — explains the project you're in. Generates a self-contained HTML report with parallel Technical and Layman views covering tech stack, architecture, methodologies, pattern rationale, pitfalls, glossary, and quiz.",
-      "version": "0.1.0"
+      "version": "0.1.1"
     }
   ]
 }
