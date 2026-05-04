@@ -57,10 +57,10 @@ OUT="$TMP/minimal.html"
 run_launcher "$FIXTURES/minimal.json" --out="$OUT" --no-open
 assert_file_exists "$OUT" "minimal HTML written"
 assert_html_contains "$OUT" "minimal-fixture" "project name embedded in JSON"
-assert_html_contains "$OUT" "<!DOCTYPE html>" "valid HTML5 doctype"
-assert_html_contains "$OUT" 'id="waid-root"' "root element present"
+if grep -qiE '<!doctype html>' "$OUT"; then ok "valid HTML5 doctype"; else fail "valid HTML5 doctype"; fi
+assert_html_contains "$OUT" 'id="waid-content"' "main content shell present"
 assert_html_contains "$OUT" 'data-waid-section="overview"' "overview section present"
-assert_html_contains "$OUT" 'data-waid-section="tech-stack"' "tech-stack section present"
+assert_html_contains "$OUT" 'data-waid-section="tech_stack"' "tech-stack section present"
 assert_html_contains "$OUT" 'data-waid-section="architecture"' "architecture section present"
 assert_html_contains "$OUT" 'data-waid-section="quiz"' "quiz section present"
 assert_html_not_contains "$OUT" "__WAID_TEMPLATE_CSS__" "css placeholder substituted"

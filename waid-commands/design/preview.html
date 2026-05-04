@@ -1,0 +1,1753 @@
+<!doctype html>
+<html lang="en" data-theme="auto" data-view="technical">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Under the Hood — rich-fixture</title>
+
+<style id="waid-tokens">
+/* ============================================================
+   waid-commands · template.css
+   Single file, no @import, no Google Fonts.
+   Tokens are stable; values can be re-tuned, names should not be renamed.
+   ============================================================ */
+
+:root, html[data-theme="light"] {
+  /* — color scale, slightly warm neutral — */
+  --waid-color-bg:               #fbfaf7;        /* page */
+  --waid-color-surface:          #ffffff;        /* cards */
+  --waid-color-surface-sunken:   #f4f1ec;        /* inset / inline code bg */
+  --waid-color-surface-muted:    #f7f5f1;        /* TOC, header */
+  --waid-color-border:           #e6e1d8;
+  --waid-color-border-strong:    #d6cfc1;
+  --waid-color-text:             #1a1814;        /* body */
+  --waid-color-text-muted:       #6b6557;        /* secondary, captions */
+  --waid-color-text-subtle:      #94907f;        /* tertiary */
+
+  /* — accent: cool measured blue — */
+  --waid-color-accent:           oklch(0.55 0.13 245);
+  --waid-color-accent-soft:      oklch(0.95 0.03 245);
+  --waid-color-accent-on:        #ffffff;
+  --waid-color-focus-ring:       oklch(0.55 0.13 245 / 0.45);
+
+  /* — code surfaces (FIXED: inline ≠ block) — */
+  --waid-color-code-bg:          #1e2330;        /* dark, used ONLY for full code blocks */
+  --waid-color-code-fg:          #e6e9f2;
+  --waid-color-code-inline-bg:   #f0ece4;        /* light, on light page */
+  --waid-color-code-inline-fg:   #2a2620;
+
+  /* — severity (used by .waid-pitfall[data-severity]) — */
+  --waid-color-sev-low-bg:       oklch(0.95 0.04 145);
+  --waid-color-sev-low-fg:       oklch(0.36 0.10 145);
+  --waid-color-sev-low-bd:       oklch(0.80 0.07 145);
+  --waid-color-sev-medium-bg:    oklch(0.95 0.05 75);
+  --waid-color-sev-medium-fg:    oklch(0.40 0.13 60);
+  --waid-color-sev-medium-bd:    oklch(0.80 0.10 70);
+  --waid-color-sev-high-bg:      oklch(0.95 0.04 25);
+  --waid-color-sev-high-fg:      oklch(0.42 0.16 25);
+  --waid-color-sev-high-bd:      oklch(0.80 0.10 25);
+
+  /* — quiz — */
+  --waid-color-correct-bg:       oklch(0.95 0.05 145);
+  --waid-color-correct-fg:       oklch(0.36 0.10 145);
+  --waid-color-correct-bd:       oklch(0.70 0.10 145);
+  --waid-color-wrong-bg:         oklch(0.95 0.04 25);
+  --waid-color-wrong-fg:         oklch(0.42 0.16 25);
+  --waid-color-wrong-bd:         oklch(0.75 0.10 25);
+
+  /* — geometry — */
+  --waid-radius-sm:              4px;
+  --waid-radius:                 8px;
+  --waid-radius-lg:              14px;
+  --waid-radius-pill:            999px;
+
+  --waid-shadow-card:            0 1px 0 rgba(20, 18, 14, 0.04), 0 1px 3px rgba(20, 18, 14, 0.04);
+  --waid-shadow-raised:          0 1px 0 rgba(20, 18, 14, 0.05), 0 8px 24px -10px rgba(20, 18, 14, 0.12);
+
+  /* — type — */
+  --waid-font-sans:              "Inter", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --waid-font-mono:              "JetBrains Mono", "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+
+  --waid-fs-h1:                  clamp(1.875rem, 1.4rem + 1.6vw, 2.375rem);  /* 30→38 */
+  --waid-fs-h2:                  1.5rem;        /* 24 */
+  --waid-fs-h3:                  1.0625rem;     /* 17 */
+  --waid-fs-body:                0.9375rem;     /* 15 */
+  --waid-fs-caption:             0.8125rem;     /* 13 */
+  --waid-fs-mono:                0.8125rem;
+  --waid-fs-eyebrow:             0.6875rem;     /* 11 — uppercase labels */
+
+  --waid-lh-tight:               1.2;
+  --waid-lh-snug:                1.4;
+  --waid-lh-body:                1.65;
+
+  /* — layout — */
+  --waid-toc-w:                  260px;
+  --waid-content-max:            720px;
+  --waid-shell-max:              1140px;
+  --waid-header-h:               56px;
+  --waid-gutter:                 32px;
+
+  color-scheme: light;
+}
+
+html[data-theme="dark"] {
+  --waid-color-bg:               #0e1014;
+  --waid-color-surface:          #161a21;
+  --waid-color-surface-sunken:   #11141a;
+  --waid-color-surface-muted:    #13161c;
+  --waid-color-border:           #232830;
+  --waid-color-border-strong:    #2e343e;
+  --waid-color-text:             #e6e3dc;
+  --waid-color-text-muted:       #9b9789;
+  --waid-color-text-subtle:      #6f6c63;
+
+  --waid-color-accent:           oklch(0.72 0.13 245);
+  --waid-color-accent-soft:      oklch(0.32 0.07 245);
+  --waid-color-accent-on:        #0e1014;
+  --waid-color-focus-ring:       oklch(0.72 0.13 245 / 0.55);
+
+  --waid-color-code-bg:          #0a0c10;
+  --waid-color-code-fg:          #d8dbe4;
+  --waid-color-code-inline-bg:   #1d222b;
+  --waid-color-code-inline-fg:   #d8d4ca;
+
+  --waid-color-sev-low-bg:       oklch(0.28 0.04 145);
+  --waid-color-sev-low-fg:       oklch(0.85 0.10 145);
+  --waid-color-sev-low-bd:       oklch(0.40 0.06 145);
+  --waid-color-sev-medium-bg:    oklch(0.28 0.05 70);
+  --waid-color-sev-medium-fg:    oklch(0.85 0.13 75);
+  --waid-color-sev-medium-bd:    oklch(0.42 0.08 70);
+  --waid-color-sev-high-bg:      oklch(0.28 0.05 25);
+  --waid-color-sev-high-fg:      oklch(0.82 0.14 25);
+  --waid-color-sev-high-bd:      oklch(0.45 0.10 25);
+
+  --waid-color-correct-bg:       oklch(0.28 0.05 145);
+  --waid-color-correct-fg:       oklch(0.85 0.10 145);
+  --waid-color-correct-bd:       oklch(0.40 0.07 145);
+  --waid-color-wrong-bg:         oklch(0.28 0.05 25);
+  --waid-color-wrong-fg:         oklch(0.82 0.13 25);
+  --waid-color-wrong-bd:         oklch(0.40 0.07 25);
+
+  --waid-shadow-card:            0 1px 0 rgba(0,0,0,0.4), 0 1px 3px rgba(0,0,0,0.4);
+  --waid-shadow-raised:          0 1px 0 rgba(0,0,0,0.5), 0 8px 24px -10px rgba(0,0,0,0.6);
+
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  html[data-theme="auto"] {
+    --waid-color-bg:               #0e1014;
+    --waid-color-surface:          #161a21;
+    --waid-color-surface-sunken:   #11141a;
+    --waid-color-surface-muted:    #13161c;
+    --waid-color-border:           #232830;
+    --waid-color-border-strong:    #2e343e;
+    --waid-color-text:             #e6e3dc;
+    --waid-color-text-muted:       #9b9789;
+    --waid-color-text-subtle:      #6f6c63;
+    --waid-color-accent:           oklch(0.72 0.13 245);
+    --waid-color-accent-soft:      oklch(0.32 0.07 245);
+    --waid-color-accent-on:        #0e1014;
+    --waid-color-focus-ring:       oklch(0.72 0.13 245 / 0.55);
+    --waid-color-code-bg:          #0a0c10;
+    --waid-color-code-fg:          #d8dbe4;
+    --waid-color-code-inline-bg:   #1d222b;
+    --waid-color-code-inline-fg:   #d8d4ca;
+    --waid-color-sev-low-bg:       oklch(0.28 0.04 145);
+    --waid-color-sev-low-fg:       oklch(0.85 0.10 145);
+    --waid-color-sev-low-bd:       oklch(0.40 0.06 145);
+    --waid-color-sev-medium-bg:    oklch(0.28 0.05 70);
+    --waid-color-sev-medium-fg:    oklch(0.85 0.13 75);
+    --waid-color-sev-medium-bd:    oklch(0.42 0.08 70);
+    --waid-color-sev-high-bg:      oklch(0.28 0.05 25);
+    --waid-color-sev-high-fg:      oklch(0.82 0.14 25);
+    --waid-color-sev-high-bd:      oklch(0.45 0.10 25);
+    --waid-color-correct-bg:       oklch(0.28 0.05 145);
+    --waid-color-correct-fg:       oklch(0.85 0.10 145);
+    --waid-color-correct-bd:       oklch(0.40 0.07 145);
+    --waid-color-wrong-bg:         oklch(0.28 0.05 25);
+    --waid-color-wrong-fg:         oklch(0.82 0.13 25);
+    --waid-color-wrong-bd:         oklch(0.40 0.07 25);
+    --waid-shadow-card:            0 1px 0 rgba(0,0,0,0.4), 0 1px 3px rgba(0,0,0,0.4);
+    --waid-shadow-raised:          0 1px 0 rgba(0,0,0,0.5), 0 8px 24px -10px rgba(0,0,0,0.6);
+    color-scheme: dark;
+  }
+}
+
+/* ============================================================
+   reset + base
+   ============================================================ */
+*, *::before, *::after { box-sizing: border-box; }
+html { scroll-behavior: smooth; scroll-padding-top: calc(var(--waid-header-h) + 16px); }
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+
+body {
+  margin: 0;
+  background: var(--waid-color-bg);
+  color: var(--waid-color-text);
+  font-family: var(--waid-font-sans);
+  font-size: var(--waid-fs-body);
+  line-height: var(--waid-lh-body);
+  font-feature-settings: "ss01", "cv11";
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+::selection { background: var(--waid-color-accent-soft); color: var(--waid-color-text); }
+
+a {
+  color: var(--waid-color-accent);
+  text-decoration: none;
+  text-decoration-color: color-mix(in oklab, var(--waid-color-accent) 30%, transparent);
+  text-underline-offset: 3px;
+}
+a:hover { text-decoration: underline; }
+
+:focus-visible {
+  outline: 2px solid var(--waid-color-focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--waid-radius-sm);
+}
+
+/* ============================================================
+   typography
+   ============================================================ */
+.waid-h1 {
+  font-size: var(--waid-fs-h1);
+  line-height: var(--waid-lh-tight);
+  letter-spacing: -0.02em;
+  font-weight: 600;
+  margin: 0 0 8px;
+  color: var(--waid-color-text);
+  text-wrap: pretty;
+}
+.waid-h2 {
+  font-size: var(--waid-fs-h2);
+  line-height: var(--waid-lh-snug);
+  letter-spacing: -0.014em;
+  font-weight: 600;
+  margin: 0 0 6px;
+}
+.waid-h3 {
+  font-size: var(--waid-fs-h3);
+  line-height: var(--waid-lh-snug);
+  font-weight: 600;
+  margin: 0;
+  letter-spacing: -0.005em;
+}
+.waid-eyebrow {
+  font-family: var(--waid-font-mono);
+  font-size: var(--waid-fs-eyebrow);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--waid-color-text-subtle);
+  font-weight: 500;
+}
+.waid-caption {
+  font-size: var(--waid-fs-caption);
+  color: var(--waid-color-text-muted);
+  line-height: var(--waid-lh-snug);
+}
+.waid-body p { margin: 0 0 1em; }
+.waid-body p:last-child { margin-bottom: 0; }
+.waid-body strong { font-weight: 600; color: var(--waid-color-text); }
+
+/* ============================================================
+   inline + block code (the redaction-bar bug, fixed)
+   ============================================================ */
+:not(pre) > code {
+  font-family: var(--waid-font-mono);
+  font-size: 0.875em;
+  background: var(--waid-color-code-inline-bg);
+  color: var(--waid-color-code-inline-fg);
+  border: 1px solid color-mix(in oklab, var(--waid-color-border) 60%, transparent);
+  padding: 0.1em 0.4em;
+  border-radius: var(--waid-radius-sm);
+  white-space: nowrap;
+}
+pre {
+  margin: 0;
+  padding: 16px;
+  background: var(--waid-color-code-bg);
+  color: var(--waid-color-code-fg);
+  border-radius: var(--waid-radius);
+  font-family: var(--waid-font-mono);
+  font-size: var(--waid-fs-mono);
+  line-height: 1.55;
+  overflow-x: auto;
+}
+pre code { background: transparent; color: inherit; padding: 0; border: 0; white-space: pre; font-size: inherit; }
+
+/* ============================================================
+   shell & layout
+   ============================================================ */
+.waid-shell {
+  max-width: var(--waid-shell-max);
+  margin: 0 auto;
+  padding: 0 var(--waid-gutter);
+}
+
+.waid-page {
+  display: grid;
+  grid-template-columns: var(--waid-toc-w) minmax(0, 1fr);
+  gap: 56px;
+  padding: 32px 0 96px;
+  align-items: start;
+}
+
+.waid-content {
+  max-width: var(--waid-content-max);
+  min-width: 0;
+}
+
+@media (max-width: 960px) {
+  .waid-page { grid-template-columns: 1fr; gap: 0; padding-top: 16px; }
+}
+
+/* ============================================================
+   sticky header
+   ============================================================ */
+.waid-header {
+  position: sticky; top: 0; z-index: 40;
+  background: color-mix(in oklab, var(--waid-color-surface-muted) 88%, transparent);
+  backdrop-filter: saturate(140%) blur(8px);
+  -webkit-backdrop-filter: saturate(140%) blur(8px);
+  border-bottom: 1px solid var(--waid-color-border);
+}
+.waid-header-inner {
+  display: flex; align-items: center; gap: 16px;
+  height: var(--waid-header-h);
+  max-width: var(--waid-shell-max);
+  margin: 0 auto;
+  padding: 0 var(--waid-gutter);
+}
+.waid-brand {
+  display: flex; align-items: center; gap: 10px;
+  font-weight: 600; letter-spacing: -0.01em;
+  color: var(--waid-color-text);
+}
+.waid-brand-mark {
+  width: 22px; height: 22px;
+  display: grid; place-items: center;
+  border-radius: var(--waid-radius-sm);
+  background: var(--waid-color-text);
+  color: var(--waid-color-bg);
+  font-family: var(--waid-font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+.waid-brand-sub {
+  color: var(--waid-color-text-muted);
+  font-weight: 400;
+  font-size: var(--waid-fs-caption);
+  margin-left: 6px;
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.waid-brand-sub::before {
+  content: "/";
+  color: var(--waid-color-text-subtle);
+}
+.waid-header-spacer { flex: 1; }
+
+/* segmented view-toggle (the defining control) */
+.waid-viewtoggle {
+  position: relative;
+  display: inline-flex;
+  padding: 3px;
+  background: var(--waid-color-surface-sunken);
+  border: 1px solid var(--waid-color-border);
+  border-radius: var(--waid-radius-pill);
+  font-size: var(--waid-fs-caption);
+}
+.waid-viewtoggle__indicator {
+  position: absolute;
+  top: 3px; bottom: 3px; left: 3px;
+  width: calc(50% - 3px);
+  border-radius: var(--waid-radius-pill);
+  background: var(--waid-color-surface);
+  box-shadow: 0 1px 0 rgba(20,18,14,0.04), 0 1px 3px rgba(20,18,14,0.08);
+  transition: transform 220ms cubic-bezier(0.32, 0.72, 0.0, 1.0);
+  pointer-events: none;
+}
+html[data-view="layman"] .waid-viewtoggle__indicator { transform: translateX(100%); }
+html[data-theme="dark"] .waid-viewtoggle__indicator,
+html[data-theme="auto"] .waid-viewtoggle__indicator {
+  box-shadow: 0 1px 0 rgba(0,0,0,0.4), 0 1px 6px rgba(0,0,0,0.5);
+}
+.waid-viewtoggle button {
+  position: relative; z-index: 1;
+  appearance: none; background: transparent; border: 0;
+  padding: 6px 14px;
+  border-radius: var(--waid-radius-pill);
+  color: var(--waid-color-text-muted);
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  display: inline-flex; align-items: center; gap: 6px;
+  transition: color 200ms ease;
+}
+.waid-viewtoggle button[aria-pressed="true"] { color: var(--waid-color-text); }
+.waid-viewtoggle svg { width: 13px; height: 13px; opacity: 0.85; }
+.waid-viewtoggle:focus-within { outline: 2px solid var(--waid-color-focus-ring); outline-offset: 2px; }
+
+/* theme toggle: 3-segment mini control */
+.waid-themetoggle {
+  display: inline-flex;
+  padding: 3px;
+  background: var(--waid-color-surface-sunken);
+  border: 1px solid var(--waid-color-border);
+  border-radius: var(--waid-radius-pill);
+}
+.waid-themetoggle button {
+  appearance: none; background: transparent; border: 0;
+  width: 30px; height: 26px;
+  border-radius: var(--waid-radius-pill);
+  color: var(--waid-color-text-muted);
+  cursor: pointer;
+  display: grid; place-items: center;
+  transition: color 160ms ease, background 160ms ease;
+}
+.waid-themetoggle button[aria-pressed="true"] {
+  background: var(--waid-color-surface);
+  color: var(--waid-color-text);
+  box-shadow: 0 1px 0 rgba(20,18,14,0.04), 0 1px 3px rgba(20,18,14,0.08);
+}
+html[data-theme="dark"] .waid-themetoggle button[aria-pressed="true"],
+html[data-theme="auto"] .waid-themetoggle button[aria-pressed="true"] {
+  box-shadow: 0 1px 0 rgba(0,0,0,0.4), 0 1px 6px rgba(0,0,0,0.5);
+}
+.waid-themetoggle svg { width: 14px; height: 14px; }
+
+.waid-toc-trigger {
+  display: none;
+  appearance: none;
+  background: transparent; border: 1px solid var(--waid-color-border);
+  border-radius: var(--waid-radius);
+  color: var(--waid-color-text);
+  height: 32px; padding: 0 10px;
+  align-items: center; gap: 6px;
+  font: inherit; font-size: var(--waid-fs-caption);
+  cursor: pointer;
+}
+.waid-toc-trigger svg { width: 14px; height: 14px; }
+@media (max-width: 960px) {
+  .waid-toc-trigger { display: inline-flex; }
+}
+
+/* ============================================================
+   TOC
+   ============================================================ */
+.waid-toc {
+  position: sticky;
+  top: calc(var(--waid-header-h) + 24px);
+  align-self: start;
+  max-height: calc(100vh - var(--waid-header-h) - 48px);
+  overflow-y: auto;
+  padding-right: 8px;
+  font-size: var(--waid-fs-caption);
+}
+.waid-toc__label {
+  display: block;
+  margin: 0 0 12px;
+  font-family: var(--waid-font-mono);
+  font-size: var(--waid-fs-eyebrow);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--waid-color-text-subtle);
+}
+.waid-toc__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1px; }
+.waid-toc__item a {
+  display: flex; align-items: center; gap: 10px;
+  padding: 6px 10px;
+  border-radius: var(--waid-radius);
+  color: var(--waid-color-text-muted);
+  border-left: 2px solid transparent;
+  margin-left: -2px;
+  transition: color 140ms ease, background 140ms ease, border-color 140ms ease;
+}
+.waid-toc__item a:hover {
+  color: var(--waid-color-text);
+  background: var(--waid-color-surface-sunken);
+  text-decoration: none;
+}
+.waid-toc__item a .waid-toc__num {
+  font-family: var(--waid-font-mono);
+  font-size: 11px;
+  color: var(--waid-color-text-subtle);
+  width: 1.6em;
+  flex-shrink: 0;
+}
+.waid-toc__item.is-active a {
+  color: var(--waid-color-text);
+  background: var(--waid-color-surface-sunken);
+  border-left-color: var(--waid-color-accent);
+}
+.waid-toc__item.is-active .waid-toc__num { color: var(--waid-color-accent); }
+
+@media (max-width: 960px) {
+  .waid-toc {
+    position: fixed;
+    top: 0; left: 0; bottom: 0;
+    width: min(280px, 80vw);
+    max-height: 100vh;
+    background: var(--waid-color-surface);
+    padding: 24px 16px 32px 24px;
+    border-right: 1px solid var(--waid-color-border);
+    box-shadow: var(--waid-shadow-raised);
+    transform: translateX(-100%);
+    transition: transform 220ms cubic-bezier(0.32, 0.72, 0.0, 1.0);
+    z-index: 50;
+  }
+  .waid-toc.is-open { transform: translateX(0); }
+  .waid-toc-backdrop {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.3);
+    opacity: 0; pointer-events: none;
+    transition: opacity 200ms ease;
+    z-index: 49;
+  }
+  .waid-toc-backdrop.is-open { opacity: 1; pointer-events: auto; }
+}
+
+/* ============================================================
+   page hero
+   ============================================================ */
+.waid-hero { padding-bottom: 32px; border-bottom: 1px solid var(--waid-color-border); margin-bottom: 48px; }
+.waid-hero__meta {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px;
+  margin-bottom: 18px;
+  font-size: var(--waid-fs-caption);
+  color: var(--waid-color-text-muted);
+}
+.waid-hero__meta .waid-eyebrow { color: var(--waid-color-accent); }
+.waid-hero__meta .dot {
+  width: 3px; height: 3px; border-radius: 50%;
+  background: var(--waid-color-text-subtle);
+  display: inline-block;
+}
+.waid-hero__sub { color: var(--waid-color-text-muted); max-width: 60ch; margin-top: 12px; }
+
+/* ============================================================
+   sections
+   ============================================================ */
+.waid-section {
+  padding: 48px 0 0;
+  scroll-margin-top: calc(var(--waid-header-h) + 16px);
+}
+.waid-section + .waid-section { margin-top: 8px; }
+.waid-section__head {
+  display: flex; align-items: baseline; gap: 14px;
+  margin-bottom: 20px;
+}
+.waid-section__num {
+  font-family: var(--waid-font-mono);
+  font-size: var(--waid-fs-caption);
+  color: var(--waid-color-text-subtle);
+  letter-spacing: 0.04em;
+}
+.waid-section__title { flex: 1; }
+.waid-section__sub {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--waid-fs-caption);
+  color: var(--waid-color-text-muted);
+  font-weight: 400;
+}
+
+/* ============================================================
+   cards
+   ============================================================ */
+.waid-card {
+  background: var(--waid-color-surface);
+  border: 1px solid var(--waid-color-border);
+  border-radius: var(--waid-radius-lg);
+  padding: 20px 22px;
+  box-shadow: var(--waid-shadow-card);
+}
+.waid-card + .waid-card { margin-top: 12px; }
+.waid-card__head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; flex-wrap: wrap; }
+.waid-card__head .waid-h3 { flex: 1; min-width: 0; }
+.waid-card__body { color: var(--waid-color-text); }
+.waid-card__body p { margin: 0; }
+
+.waid-stack-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
+}
+.waid-stack-card {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  background: var(--waid-color-surface);
+  border: 1px solid var(--waid-color-border);
+  border-radius: var(--waid-radius);
+  transition: border-color 160ms ease, transform 160ms ease;
+}
+.waid-stack-card:hover { border-color: var(--waid-color-border-strong); }
+.waid-stack-card__glyph {
+  width: 26px; height: 26px;
+  border-radius: 6px;
+  background: var(--waid-color-surface-sunken);
+  border: 1px solid var(--waid-color-border);
+  display: grid; place-items: center;
+  font-family: var(--waid-font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--waid-color-text-muted);
+}
+.waid-stack-card__name { font-weight: 600; font-size: 0.9375rem; line-height: 1.2; }
+.waid-stack-card__role {
+  font-size: 12px;
+  color: var(--waid-color-text-muted);
+  line-height: 1.2;
+  margin-top: 2px;
+}
+.waid-stack-card__ver {
+  font-family: var(--waid-font-mono);
+  font-size: 11px;
+  color: var(--waid-color-text-muted);
+  background: var(--waid-color-surface-sunken);
+  padding: 3px 7px;
+  border-radius: var(--waid-radius-sm);
+  border: 1px solid var(--waid-color-border);
+}
+
+/* ============================================================
+   complexity & severity badges
+   ============================================================ */
+.waid-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-family: var(--waid-font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  padding: 2px 8px;
+  border-radius: var(--waid-radius-pill);
+  background: var(--waid-color-surface-sunken);
+  color: var(--waid-color-text-muted);
+  border: 1px solid var(--waid-color-border);
+  white-space: nowrap;
+}
+.waid-badge--accent { background: var(--waid-color-accent-soft); color: var(--waid-color-accent); border-color: transparent; }
+
+.waid-pitfall { position: relative; padding-left: 24px; }
+.waid-pitfall::before {
+  content: "";
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 4px;
+  border-radius: 4px 0 0 4px;
+}
+.waid-pitfall[data-severity="low"]::before    { background: var(--waid-color-sev-low-bd); }
+.waid-pitfall[data-severity="medium"]::before { background: var(--waid-color-sev-medium-bd); }
+.waid-pitfall[data-severity="high"]::before   { background: var(--waid-color-sev-high-bd); }
+
+.waid-sev {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: var(--waid-font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 2px 9px;
+  border-radius: var(--waid-radius-pill);
+  border: 1px solid;
+}
+.waid-sev::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.waid-sev[data-severity="low"]    { color: var(--waid-color-sev-low-fg);    background: var(--waid-color-sev-low-bg);    border-color: var(--waid-color-sev-low-bd); }
+.waid-sev[data-severity="medium"] { color: var(--waid-color-sev-medium-fg); background: var(--waid-color-sev-medium-bg); border-color: var(--waid-color-sev-medium-bd); }
+.waid-sev[data-severity="high"]   { color: var(--waid-color-sev-high-fg);   background: var(--waid-color-sev-high-bg);   border-color: var(--waid-color-sev-high-bd); }
+
+/* ============================================================
+   view-swap (technical / layman)
+   ============================================================ */
+.waid-views {
+  display: grid;
+  grid-template-areas: "stack";
+}
+.waid-views > .waid-view {
+  grid-area: stack;
+  transition: opacity 220ms ease, transform 220ms ease, visibility 0s linear 220ms;
+  opacity: 0;
+  transform: translateY(2px);
+  visibility: hidden;
+  pointer-events: none;
+}
+html[data-view="technical"] .waid-views > .waid-view[data-view="technical"],
+html[data-view="layman"]    .waid-views > .waid-view[data-view="layman"] {
+  opacity: 1;
+  transform: none;
+  visibility: visible;
+  pointer-events: auto;
+  transition: opacity 240ms ease, transform 240ms ease, visibility 0s;
+}
+
+/* ============================================================
+   architecture mermaid frame
+   ============================================================ */
+.waid-mermaid-frame {
+  margin-top: 14px;
+  padding: 24px;
+  background: var(--waid-color-surface);
+  border: 1px solid var(--waid-color-border);
+  border-radius: var(--waid-radius-lg);
+  overflow-x: auto;
+  display: flex; justify-content: center;
+}
+.waid-mermaid-frame svg { max-width: 100%; height: auto; }
+
+/* ============================================================
+   glossary
+   ============================================================ */
+.waid-gloss {
+  display: grid;
+  grid-template-columns: minmax(140px, 200px) minmax(0, 1fr);
+  gap: 0;
+  background: var(--waid-color-surface);
+  border: 1px solid var(--waid-color-border);
+  border-radius: var(--waid-radius-lg);
+  overflow: hidden;
+}
+.waid-gloss__term {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--waid-color-border);
+  background: var(--waid-color-surface-muted);
+  font-weight: 600;
+  font-size: 0.9375rem;
+  color: var(--waid-color-text);
+}
+.waid-gloss__def {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--waid-color-border);
+  color: var(--waid-color-text-muted);
+}
+.waid-gloss > :nth-last-child(-n+2) { border-bottom: 0; }
+
+/* glossary terms inside body text */
+.waid-glossary-ref {
+  border-bottom: 1px dashed var(--waid-color-border-strong);
+  cursor: help;
+  position: relative;
+  color: inherit;
+}
+.waid-glossary-ref:hover { border-bottom-color: var(--waid-color-accent); }
+
+.waid-tooltip {
+  position: fixed;
+  z-index: 80;
+  max-width: 320px;
+  padding: 12px 14px;
+  background: var(--waid-color-surface);
+  border: 1px solid var(--waid-color-border-strong);
+  border-radius: var(--waid-radius);
+  box-shadow: var(--waid-shadow-raised);
+  font-size: var(--waid-fs-caption);
+  line-height: 1.5;
+  color: var(--waid-color-text);
+  opacity: 0; transform: translateY(4px);
+  transition: opacity 140ms ease, transform 140ms ease;
+  pointer-events: none;
+}
+.waid-tooltip.is-visible { opacity: 1; transform: none; }
+.waid-tooltip__term {
+  font-family: var(--waid-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--waid-color-accent);
+  margin-bottom: 4px;
+}
+
+/* ============================================================
+   quiz
+   ============================================================ */
+.waid-quiz { display: flex; flex-direction: column; gap: 16px; }
+.waid-quiz__card {
+  background: var(--waid-color-surface);
+  border: 1px solid var(--waid-color-border);
+  border-radius: var(--waid-radius-lg);
+  padding: 22px 22px 18px;
+  box-shadow: var(--waid-shadow-card);
+}
+.waid-quiz__qmeta {
+  display: flex; align-items: center; gap: 8px;
+  font-family: var(--waid-font-mono);
+  font-size: var(--waid-fs-eyebrow);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--waid-color-text-subtle);
+  margin-bottom: 10px;
+}
+.waid-quiz__q { font-weight: 600; font-size: 1rem; line-height: 1.4; margin: 0 0 14px; }
+.waid-quiz__choices { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.waid-quiz__choice {
+  display: flex; align-items: center; gap: 10px;
+  width: 100%; text-align: left;
+  appearance: none; background: var(--waid-color-surface);
+  border: 1px solid var(--waid-color-border);
+  color: var(--waid-color-text);
+  padding: 11px 14px;
+  border-radius: var(--waid-radius);
+  font: inherit;
+  font-size: 0.9375rem;
+  cursor: pointer;
+  transition: border-color 160ms ease, background 160ms ease, transform 100ms ease;
+}
+.waid-quiz__choice:hover:not(:disabled):not([data-state]) {
+  border-color: var(--waid-color-border-strong);
+  background: var(--waid-color-surface-muted);
+}
+.waid-quiz__choice:active:not(:disabled):not([data-state]) { transform: translateY(1px); }
+.waid-quiz__choice[data-state="correct"] {
+  background: var(--waid-color-correct-bg);
+  border-color: var(--waid-color-correct-bd);
+  color: var(--waid-color-correct-fg);
+}
+.waid-quiz__choice[data-state="wrong"] {
+  background: var(--waid-color-wrong-bg);
+  border-color: var(--waid-color-wrong-bd);
+  color: var(--waid-color-wrong-fg);
+}
+.waid-quiz__choice[data-state="reveal"] {
+  background: var(--waid-color-correct-bg);
+  border-color: var(--waid-color-correct-bd);
+  color: var(--waid-color-correct-fg);
+}
+.waid-quiz__choice:disabled { cursor: default; }
+.waid-quiz__icon {
+  width: 18px; height: 18px;
+  border-radius: 50%;
+  border: 1.5px solid var(--waid-color-border-strong);
+  flex-shrink: 0;
+  display: grid; place-items: center;
+  font-family: var(--waid-font-mono); font-size: 10px; font-weight: 600;
+  color: var(--waid-color-text-muted);
+  background: var(--waid-color-bg);
+}
+.waid-quiz__choice[data-state="correct"] .waid-quiz__icon,
+.waid-quiz__choice[data-state="reveal"] .waid-quiz__icon {
+  background: var(--waid-color-correct-fg);
+  border-color: var(--waid-color-correct-fg);
+  color: var(--waid-color-correct-bg);
+}
+.waid-quiz__choice[data-state="wrong"] .waid-quiz__icon {
+  background: var(--waid-color-wrong-fg);
+  border-color: var(--waid-color-wrong-fg);
+  color: var(--waid-color-wrong-bg);
+}
+.waid-quiz__explain {
+  margin-top: 14px;
+  padding: 12px 14px;
+  background: var(--waid-color-surface-sunken);
+  border: 1px solid var(--waid-color-border);
+  border-radius: var(--waid-radius);
+  font-size: var(--waid-fs-caption);
+  color: var(--waid-color-text-muted);
+  display: none;
+}
+.waid-quiz__explain.is-visible { display: block; }
+
+/* ============================================================
+   footer
+   ============================================================ */
+.waid-footer {
+  margin-top: 96px;
+  padding: 24px 0 0;
+  border-top: 1px solid var(--waid-color-border);
+  font-size: var(--waid-fs-caption);
+  color: var(--waid-color-text-muted);
+  display: flex; flex-wrap: wrap; gap: 12px; justify-content: space-between;
+}
+
+/* ============================================================
+   utility
+   ============================================================ */
+.waid-stack { display: flex; flex-direction: column; gap: 12px; }
+.waid-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.waid-mono { font-family: var(--waid-font-mono); }
+.waid-empty {
+  padding: 20px 22px;
+  background: var(--waid-color-surface-muted);
+  border: 1px dashed var(--waid-color-border-strong);
+  border-radius: var(--waid-radius-lg);
+  color: var(--waid-color-text-muted);
+  font-size: var(--waid-fs-caption);
+  text-align: center;
+}
+
+@media (max-width: 720px) {
+  .waid-shell { padding: 0 20px; }
+  .waid-header-inner { padding: 0 20px; gap: 10px; }
+  .waid-brand-sub { display: none; }
+  .waid-section { padding-top: 36px; }
+  .waid-card { padding: 16px 18px; }
+  .waid-gloss { grid-template-columns: 1fr; }
+  .waid-gloss__term { padding-bottom: 4px; border-bottom: 0; }
+  .waid-gloss__def { padding-top: 4px; }
+}
+</style>
+</head>
+<body>
+
+<!-- ===========================================================
+     INLINE FIXTURE DATA
+     The bash launcher replaces this <script> body with the real
+     analysis JSON. Keep id="waid-data" stable.
+     =========================================================== -->
+<script type="application/json" id="waid-data">
+{
+  "$schemaVersion": 1,
+  "projectName": "rich-fixture",
+  "generatedAt": "2026-04-20T12:00:00Z",
+  "detectedStack": "Node.js / TypeScript",
+  "overview": {
+    "technical": "A representative TypeScript Node.js service exposing a REST API backed by Postgres. Uses Express, Zod for validation, and a repository pattern over node-postgres. Production deployment runs on Fly.io with structured JSON logging via pino.",
+    "layman": "Think of a small kitchen that takes orders over the phone. The phone line is the API, the recipes are the validation rules, and the pantry is the database. The whole kitchen is set up to be reliable and to log every order so you can review them later."
+  },
+  "tech_stack": {
+    "technical": "Node.js 20 LTS as runtime, TypeScript 5.4 as language, Express 4 as HTTP layer, Zod 3 for runtime validation, node-postgres 8 for Postgres access, pino 9 for logs, vitest 1 for tests, tsx for dev runtime, esbuild for production bundle.",
+    "layman": "JavaScript is the language we write in. TypeScript is JavaScript with safety rails to catch mistakes earlier. Express handles incoming requests. Zod makes sure the data we receive matches what we expect. The rest are tools for talking to the database, logging, and testing.",
+    "entries": [
+      { "name": "TypeScript",   "role": "primary language",   "version": "5.4.0" },
+      { "name": "Node.js",      "role": "runtime",            "version": "20.x" },
+      { "name": "Express",      "role": "HTTP framework",     "version": "4.19.2" },
+      { "name": "Zod",          "role": "runtime validation", "version": "3.23.0" },
+      { "name": "node-postgres","role": "Postgres client",    "version": "8.11.3" },
+      { "name": "pino",         "role": "logging",            "version": "9.0.0" },
+      { "name": "vitest",       "role": "testing framework",  "version": "1.4.0" }
+    ]
+  },
+  "architecture": {
+    "technical": "Layered architecture: HTTP routes \u2192 controllers \u2192 services \u2192 repositories \u2192 Postgres. Repositories wrap node-postgres pools and expose typed CRUD operations. Services contain business logic and orchestrate multiple repositories within transactions. Controllers translate HTTP to service calls and back.",
+    "layman": "The code is organized in floors. The top floor takes phone calls. The next floor decides what to do. The bottom floors actually look things up in the pantry. Each floor only talks to the one directly below it.",
+    "mermaid": "flowchart LR\n  Client[Client] --> Routes\n  Routes --> Controllers\n  Controllers --> Services\n  Services --> Repos[Repositories]\n  Repos --> DB[(Postgres)]\n  Services -.-> Logger[pino logger]"
+  },
+  "algorithms": {
+    "technical": "No advanced algorithms. The most notable computation is a transaction-bounded debit/credit pair when transferring funds between accounts: the repository acquires a single connection, opens a transaction, performs both updates, commits, and releases.",
+    "layman": "There is one place where two changes have to happen together \u2014 moving money from one account to another. The system makes sure both changes succeed or both fail; you cannot have money in mid-air.",
+    "entries": [
+      {
+        "name": "Transactional transfer",
+        "complexity": "O(1)",
+        "technical": "Acquires a single client from the pool, BEGIN, two UPDATEs guarded by row locks, COMMIT or ROLLBACK on error, release.",
+        "layman": "Lock the two accounts, do both updates, save them together \u2014 or undo everything if anything goes wrong."
+      }
+    ]
+  },
+  "methodologies": {
+    "technical": "Continuous integration via GitHub Actions on every PR. Schema migrations live in /migrations and are applied with a hand-rolled migrate script. Logging is structured JSON via pino, parsed by the deployment platform.",
+    "layman": "Every change is automatically checked before it can be merged. The database structure changes through small numbered files that the team applies in order. Logs are written in a structured way so they can be searched.",
+    "entries": [
+      { "name": "Continuous Integration", "technical": "GitHub Actions runs lint, typecheck, vitest on every PR.", "layman": "An automatic checker runs every time someone proposes a change." },
+      { "name": "Schema migrations",      "technical": "Numbered SQL files in /migrations applied by a custom migrate.ts.", "layman": "Database changes happen through small, ordered scripts." }
+    ]
+  },
+  "pattern_rationale": {
+    "technical": "The repository pattern was chosen to keep SQL out of services and to make testing easier (services can be tested with fake repositories). Zod validation at the controller boundary means downstream code can rely on shape guarantees without runtime checks.",
+    "layman": "We separate the part that talks to the database from the part that decides what to do. This makes the code easier to test and easier to change. We also check incoming requests at the door so the rest of the code does not have to second-guess the data.",
+    "entries": [
+      {
+        "pattern": "Repository pattern",
+        "rationale_technical": "Isolates SQL, simplifies unit tests via fake repos, allows swapping data store later.",
+        "rationale_layman": "Keeps the database talk in one place so you can change it later without touching everything.",
+        "tradeoffs": "More files; thin pass-through methods early on."
+      }
+    ]
+  },
+  "pitfalls": {
+    "technical": "Two notable risks observed in the code.",
+    "layman": "Two things to keep an eye on.",
+    "entries": [
+      {
+        "title": "Connection pool size not explicit",
+        "severity": "medium",
+        "technical": "The Pool constructor uses defaults. Under load, this can starve connections or exhaust Postgres. Set max explicitly per environment.",
+        "layman": "The system uses default settings for how many database conversations it can have at once. This can cause traffic jams when many people use it at the same time."
+      },
+      {
+        "title": "No retry on transient DB errors",
+        "severity": "low",
+        "technical": "Transient failures (network blips, restarts) bubble straight up. A small retry-with-backoff layer at the repo would improve perceived reliability.",
+        "layman": "When the database briefly hiccups, the app gives up immediately. Trying again after a moment would smooth this out."
+      }
+    ]
+  },
+  "glossary": [
+    { "term": "Repository pattern", "layman": "A way of organizing code so that all database talk happens in one set of files.", "technical": "An abstraction over a data store that exposes typed CRUD operations and hides the query language." },
+    { "term": "Transaction",        "layman": "A group of changes that all succeed together or all fail together.",                "technical": "A unit of work bracketed by BEGIN and COMMIT/ROLLBACK that provides ACID guarantees." },
+    { "term": "Zod",                "layman": "A door check that makes sure data coming into the program looks the way the program expects.", "technical": "A TypeScript-first schema declaration and parsing library used at trust boundaries to validate untrusted input." },
+    { "term": "Connection pool",    "layman": "A small set of pre-opened phone lines to the database that the program reuses.", "technical": "A managed cache of database connections kept open and lent out to callers, with limits on concurrency and idle time." }
+  ],
+  "quiz": [
+    {
+      "question": "What does Zod do in this project?",
+      "choices": ["Connects to the database", "Validates incoming request data", "Logs structured JSON", "Runs the tests"],
+      "answerIndex": 1,
+      "explanation_technical": "Zod is used at the controller boundary to validate request bodies and parse query params. Failure to validate produces a 400.",
+      "explanation_layman": "Zod is the door check \u2014 it makes sure the data coming in matches what the rest of the code expects."
+    },
+    {
+      "question": "Why are repositories used instead of putting SQL directly in services?",
+      "choices": ["Repositories run faster than direct SQL", "It separates database talk from business logic", "Postgres requires it", "It hides the database from the developer entirely"],
+      "answerIndex": 1,
+      "explanation_technical": "The repository pattern isolates SQL into a layer that services consume via typed methods, simplifying tests and future migrations.",
+      "explanation_layman": "It puts all the database conversations in one place so the rest of the code can stay focused on the business rules."
+    },
+    {
+      "question": "Which pitfall is rated as the more urgent of the two?",
+      "choices": ["No retry on transient database errors", "Connection pool size not explicit", "They are rated the same", "Neither is a real risk"],
+      "answerIndex": 1,
+      "explanation_technical": "The unconfigured pool is rated medium because it can cause production-visible saturation under load; the missing retry is rated low.",
+      "explanation_layman": "The database connection limit is the bigger risk because it can cause real traffic jams when the app is busy."
+    }
+  ]
+}
+</script>
+
+<!-- ===========================================================
+     STICKY HEADER
+     =========================================================== -->
+<header class="waid-header" role="banner">
+  <div class="waid-header-inner">
+    <button class="waid-toc-trigger" id="waid-toc-trigger" aria-label="Open contents" aria-expanded="false" aria-controls="waid-toc">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2 4h12M2 8h12M2 12h8"/></svg>
+      Contents
+    </button>
+    <a class="waid-brand" href="#waid-top">
+      <span class="waid-brand-mark" aria-hidden="true">w</span>
+      <span>under the hood</span>
+      <span class="waid-brand-sub" id="waid-project-label">rich-fixture</span>
+    </a>
+
+    <div class="waid-header-spacer"></div>
+
+    <div class="waid-viewtoggle" role="group" aria-label="View mode">
+      <span class="waid-viewtoggle__indicator" aria-hidden="true"></span>
+      <button type="button" data-view="technical" aria-pressed="true">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5.5 5.5 3 8l2.5 2.5M10.5 5.5 13 8l-2.5 2.5M9 4l-2 8"/></svg>
+        Technical
+      </button>
+      <button type="button" data-view="layman" aria-pressed="false">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 8s2.5-4 6-4 6 4 6 4-2.5 4-6 4-6-4-6-4Z"/><circle cx="8" cy="8" r="1.6"/></svg>
+        Plain
+      </button>
+    </div>
+
+    <div class="waid-themetoggle" role="group" aria-label="Theme">
+      <button type="button" data-theme="light" aria-pressed="false" aria-label="Light theme" title="Light">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="8" r="3"/><path d="M8 1.5v1.5M8 13v1.5M14.5 8H13M3 8H1.5M12.6 3.4l-1 1M4.4 11.6l-1 1M12.6 12.6l-1-1M4.4 4.4l-1-1"/></svg>
+      </button>
+      <button type="button" data-theme="auto" aria-pressed="true" aria-label="System theme" title="System">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="12" height="8.5" rx="1.5"/><path d="M5.5 14h5M8 11.5V14" stroke-linecap="round"/></svg>
+      </button>
+      <button type="button" data-theme="dark" aria-pressed="false" aria-label="Dark theme" title="Dark">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><path d="M13.5 9.5A5.5 5.5 0 1 1 6.5 2.5a4.5 4.5 0 0 0 7 7Z"/></svg>
+      </button>
+    </div>
+  </div>
+</header>
+
+<div class="waid-toc-backdrop" id="waid-toc-backdrop" hidden></div>
+
+<div class="waid-shell" id="waid-top">
+  <div class="waid-page">
+
+    <!-- ===========================================================
+         TOC
+         =========================================================== -->
+    <nav class="waid-toc" id="waid-toc" aria-label="On this page">
+      <span class="waid-toc__label">On this page</span>
+      <ul class="waid-toc__list">
+        <li class="waid-toc__item"><a href="#overview"><span class="waid-toc__num">01</span><span>Overview</span></a></li>
+        <li class="waid-toc__item"><a href="#tech-stack"><span class="waid-toc__num">02</span><span>Tech stack</span></a></li>
+        <li class="waid-toc__item"><a href="#architecture"><span class="waid-toc__num">03</span><span>Architecture</span></a></li>
+        <li class="waid-toc__item"><a href="#algorithms"><span class="waid-toc__num">04</span><span>Algorithms</span></a></li>
+        <li class="waid-toc__item"><a href="#methodologies"><span class="waid-toc__num">05</span><span>Methodologies</span></a></li>
+        <li class="waid-toc__item"><a href="#pattern-rationale"><span class="waid-toc__num">06</span><span>Pattern rationale</span></a></li>
+        <li class="waid-toc__item"><a href="#pitfalls"><span class="waid-toc__num">07</span><span>Pitfalls</span></a></li>
+        <li class="waid-toc__item"><a href="#glossary"><span class="waid-toc__num">08</span><span>Glossary</span></a></li>
+        <li class="waid-toc__item"><a href="#quiz"><span class="waid-toc__num">09</span><span>Quiz</span></a></li>
+      </ul>
+    </nav>
+
+    <!-- ===========================================================
+         CONTENT
+         =========================================================== -->
+    <main class="waid-content" id="waid-content">
+
+      <section class="waid-hero" data-screen-label="00 Hero">
+        <div class="waid-hero__meta">
+          <span class="waid-eyebrow">Under the hood</span>
+          <span class="dot" aria-hidden="true"></span>
+          <span id="waid-stack-label">Node.js / TypeScript</span>
+          <span class="dot" aria-hidden="true"></span>
+          <span id="waid-generated-label">Apr 20, 2026</span>
+        </div>
+        <h1 class="waid-h1" id="waid-project-title">rich-fixture</h1>
+        <p class="waid-hero__sub">A guided tour of how this project is put together — what it uses, why, and where it might bite. Toggle between the technical view and a plain-English view at any time.</p>
+      </section>
+
+      <!-- 01 Overview -->
+      <section class="waid-section" id="overview" data-waid-section="overview" data-screen-label="01 Overview">
+        <div class="waid-section__head">
+          <span class="waid-section__num">01</span>
+          <div class="waid-section__title">
+            <h2 class="waid-h2">Overview</h2>
+            <span class="waid-section__sub">What this project is, in one paragraph.</span>
+          </div>
+        </div>
+        <div class="waid-card">
+          <div class="waid-views">
+            <div class="waid-view waid-body" data-view="technical" data-slot="overview.technical"></div>
+            <div class="waid-view waid-body" data-view="layman"    data-slot="overview.layman"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 02 Tech stack -->
+      <section class="waid-section" id="tech-stack" data-waid-section="tech_stack" data-screen-label="02 Tech stack">
+        <div class="waid-section__head">
+          <span class="waid-section__num">02</span>
+          <div class="waid-section__title">
+            <h2 class="waid-h2">Tech stack</h2>
+            <span class="waid-section__sub">The tools this project depends on, and what each one does.</span>
+          </div>
+        </div>
+        <div class="waid-views">
+          <p class="waid-view waid-caption" data-view="technical" data-slot="tech_stack.technical" style="margin: 0 0 16px;"></p>
+          <p class="waid-view waid-caption" data-view="layman"    data-slot="tech_stack.layman"    style="margin: 0 0 16px;"></p>
+        </div>
+        <div class="waid-stack-grid" id="waid-tech-grid"></div>
+      </section>
+
+      <!-- 03 Architecture -->
+      <section class="waid-section" id="architecture" data-waid-section="architecture" data-screen-label="03 Architecture">
+        <div class="waid-section__head">
+          <span class="waid-section__num">03</span>
+          <div class="waid-section__title">
+            <h2 class="waid-h2">Architecture</h2>
+            <span class="waid-section__sub">How the pieces are arranged.</span>
+          </div>
+        </div>
+        <div class="waid-card">
+          <div class="waid-views">
+            <div class="waid-view waid-body" data-view="technical" data-slot="architecture.technical"></div>
+            <div class="waid-view waid-body" data-view="layman"    data-slot="architecture.layman"></div>
+          </div>
+        </div>
+        <div class="waid-mermaid-frame" id="waid-mermaid"></div>
+      </section>
+
+      <!-- 04 Algorithms -->
+      <section class="waid-section" id="algorithms" data-waid-section="algorithms" data-screen-label="04 Algorithms">
+        <div class="waid-section__head">
+          <span class="waid-section__num">04</span>
+          <div class="waid-section__title">
+            <h2 class="waid-h2">Algorithms</h2>
+            <span class="waid-section__sub">Notable computations and the shape of their cost.</span>
+          </div>
+        </div>
+        <div class="waid-views" style="margin-bottom: 12px;">
+          <p class="waid-view waid-caption" data-view="technical" data-slot="algorithms.technical" style="margin:0;"></p>
+          <p class="waid-view waid-caption" data-view="layman"    data-slot="algorithms.layman"    style="margin:0;"></p>
+        </div>
+        <div class="waid-stack" id="waid-algo-list"></div>
+      </section>
+
+      <!-- 05 Methodologies -->
+      <section class="waid-section" id="methodologies" data-waid-section="methodologies" data-screen-label="05 Methodologies">
+        <div class="waid-section__head">
+          <span class="waid-section__num">05</span>
+          <div class="waid-section__title">
+            <h2 class="waid-h2">Methodologies</h2>
+            <span class="waid-section__sub">How the team works on the codebase.</span>
+          </div>
+        </div>
+        <div class="waid-views" style="margin-bottom: 12px;">
+          <p class="waid-view waid-caption" data-view="technical" data-slot="methodologies.technical" style="margin:0;"></p>
+          <p class="waid-view waid-caption" data-view="layman"    data-slot="methodologies.layman"    style="margin:0;"></p>
+        </div>
+        <div class="waid-stack" id="waid-method-list"></div>
+      </section>
+
+      <!-- 06 Pattern rationale -->
+      <section class="waid-section" id="pattern-rationale" data-waid-section="pattern_rationale" data-screen-label="06 Pattern rationale">
+        <div class="waid-section__head">
+          <span class="waid-section__num">06</span>
+          <div class="waid-section__title">
+            <h2 class="waid-h2">Pattern rationale</h2>
+            <span class="waid-section__sub">Why these patterns were chosen, and what they cost.</span>
+          </div>
+        </div>
+        <div class="waid-views" style="margin-bottom: 12px;">
+          <p class="waid-view waid-caption" data-view="technical" data-slot="pattern_rationale.technical" style="margin:0;"></p>
+          <p class="waid-view waid-caption" data-view="layman"    data-slot="pattern_rationale.layman"    style="margin:0;"></p>
+        </div>
+        <div class="waid-stack" id="waid-pattern-list"></div>
+      </section>
+
+      <!-- 07 Pitfalls -->
+      <section class="waid-section" id="pitfalls" data-waid-section="pitfalls" data-screen-label="07 Pitfalls">
+        <div class="waid-section__head">
+          <span class="waid-section__num">07</span>
+          <div class="waid-section__title">
+            <h2 class="waid-h2">Pitfalls</h2>
+            <span class="waid-section__sub">What to keep an eye on, ranked by severity.</span>
+          </div>
+        </div>
+        <div class="waid-stack" id="waid-pitfall-list"></div>
+      </section>
+
+      <!-- 08 Glossary -->
+      <section class="waid-section" id="glossary" data-waid-section="glossary" data-screen-label="08 Glossary">
+        <div class="waid-section__head">
+          <span class="waid-section__num">08</span>
+          <div class="waid-section__title">
+            <h2 class="waid-h2">Glossary</h2>
+            <span class="waid-section__sub">Words used elsewhere in this report. Hover any underlined term to see a definition in context.</span>
+          </div>
+        </div>
+        <div class="waid-gloss" id="waid-gloss-list"></div>
+      </section>
+
+      <!-- 09 Quiz -->
+      <section class="waid-section" id="quiz" data-waid-section="quiz" data-screen-label="09 Quiz">
+        <div class="waid-section__head">
+          <span class="waid-section__num">09</span>
+          <div class="waid-section__title">
+            <h2 class="waid-h2">Quiz</h2>
+            <span class="waid-section__sub">Three quick questions. Pick an answer to see the explanation.</span>
+          </div>
+        </div>
+        <div class="waid-quiz" id="waid-quiz-list"></div>
+      </section>
+
+      <footer class="waid-footer">
+        <span>Generated by <code>/under-the-hood</code></span>
+        <span id="waid-footer-meta">rich-fixture · Apr 20, 2026</span>
+      </footer>
+    </main>
+  </div>
+</div>
+
+<!-- tooltip portal -->
+<div class="waid-tooltip" id="waid-tooltip" role="tooltip" aria-hidden="true"></div>
+
+<!-- Mermaid (only allowed CDN dep) -->
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
+
+<script>
+/* ============================================================
+   waid-commands · template.js — vanilla, single-file
+   ============================================================ */
+(function () {
+  "use strict";
+
+  /* ---------- read fixture ---------- */
+  var dataNode = document.getElementById("waid-data");
+  var data = {};
+  try { data = JSON.parse(dataNode.textContent); } catch (e) { console.error("waid: bad data", e); }
+
+  function get(path) {
+    return path.split(".").reduce(function (o, k) { return (o == null) ? undefined : o[k]; }, data);
+  }
+  function escapeHTML(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"})[c];
+    });
+  }
+
+  /* ---------- glossary substitution ---------- */
+  // Wrap glossary terms (longest-first) in body text with .waid-glossary-ref
+  function buildGlossaryRegex(terms) {
+    if (!terms || !terms.length) return null;
+    var sorted = terms.slice().sort(function(a,b){ return b.term.length - a.term.length; });
+    var escaped = sorted.map(function(t){ return t.term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); });
+    return new RegExp("\\b(" + escaped.join("|") + ")\\b", "gi");
+  }
+  var glossaryTerms = (data.glossary || []);
+  var glossaryByLower = {};
+  glossaryTerms.forEach(function(t){ glossaryByLower[t.term.toLowerCase()] = t; });
+  var glossaryRegex = buildGlossaryRegex(glossaryTerms);
+
+  function annotateGlossary(html) {
+    if (!glossaryRegex) return html;
+    return html.replace(glossaryRegex, function(match){
+      var key = match.toLowerCase();
+      if (!glossaryByLower[key]) return match;
+      return '<span class="waid-glossary-ref" data-term="' + escapeHTML(glossaryByLower[key].term) + '" tabindex="0">' + escapeHTML(match) + '</span>';
+    });
+  }
+
+  /* ---------- slot renderers ---------- */
+  document.querySelectorAll("[data-slot]").forEach(function(el){
+    var raw = get(el.getAttribute("data-slot"));
+    if (raw == null || raw === "") {
+      el.innerHTML = '<span class="waid-empty" style="display:inline-block;">No content for this view.</span>';
+      return;
+    }
+    // if multiple paragraphs, split on \n\n; otherwise single paragraph.
+    var paras = String(raw).split(/\n\n+/);
+    var html = paras.map(function(p){ return "<p>" + annotateGlossary(escapeHTML(p)) + "</p>"; }).join("");
+    el.innerHTML = html;
+  });
+
+  /* ---------- header meta ---------- */
+  (function meta(){
+    var name = data.projectName || "Project";
+    document.title = "Under the Hood — " + name;
+    var t = document.getElementById("waid-project-title"); if (t) t.textContent = name;
+    var s = document.getElementById("waid-stack-label"); if (s) s.textContent = data.detectedStack || "";
+    var p = document.getElementById("waid-project-label"); if (p) p.textContent = name;
+    var when = data.generatedAt ? new Date(data.generatedAt) : null;
+    var pretty = when ? when.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) : "";
+    var g = document.getElementById("waid-generated-label"); if (g) g.textContent = pretty;
+    var f = document.getElementById("waid-footer-meta");     if (f) f.textContent = name + (pretty ? " · " + pretty : "");
+  })();
+
+  /* ---------- tech stack grid ---------- */
+  (function techStack(){
+    var grid = document.getElementById("waid-tech-grid");
+    if (!grid) return;
+    var entries = (get("tech_stack.entries") || []);
+    if (!entries.length) {
+      grid.innerHTML = '<div class="waid-empty">No dependencies declared.</div>';
+      return;
+    }
+    grid.innerHTML = entries.map(function(e){
+      var initial = (e.name || "?").trim().charAt(0).toUpperCase();
+      return ''
+        + '<div class="waid-stack-card">'
+        +   '<div class="waid-stack-card__glyph" aria-hidden="true">' + escapeHTML(initial) + '</div>'
+        +   '<div>'
+        +     '<div class="waid-stack-card__name">' + escapeHTML(e.name || "") + '</div>'
+        +     '<div class="waid-stack-card__role">' + escapeHTML(e.role || "") + '</div>'
+        +   '</div>'
+        +   (e.version ? '<div class="waid-stack-card__ver">' + escapeHTML(e.version) + '</div>' : '<div></div>')
+        + '</div>';
+    }).join("");
+  })();
+
+  /* ---------- algorithms list ---------- */
+  (function algos(){
+    var box = document.getElementById("waid-algo-list");
+    if (!box) return;
+    var entries = (get("algorithms.entries") || []);
+    if (!entries.length) {
+      box.innerHTML = '<div class="waid-empty">No notable algorithms in this project.</div>';
+      return;
+    }
+    box.innerHTML = entries.map(function(e){
+      var head = ''
+        + '<div class="waid-card__head">'
+        +   '<h3 class="waid-h3">' + escapeHTML(e.name || "") + '</h3>'
+        +   (e.complexity ? '<span class="waid-badge waid-badge--accent">' + escapeHTML(e.complexity) + '</span>' : '')
+        + '</div>';
+      var views = ''
+        + '<div class="waid-views">'
+        +   '<div class="waid-view waid-body" data-view="technical"><p>' + annotateGlossary(escapeHTML(e.technical || "")) + '</p></div>'
+        +   '<div class="waid-view waid-body" data-view="layman"><p>'    + annotateGlossary(escapeHTML(e.layman || "")) + '</p></div>'
+        + '</div>';
+      return '<div class="waid-card">' + head + views + '</div>';
+    }).join("");
+  })();
+
+  /* ---------- methodologies ---------- */
+  (function methods(){
+    var box = document.getElementById("waid-method-list");
+    if (!box) return;
+    var entries = (get("methodologies.entries") || []);
+    if (!entries.length) {
+      box.innerHTML = '<div class="waid-empty">No methodology entries.</div>';
+      return;
+    }
+    box.innerHTML = entries.map(function(e){
+      return ''
+        + '<div class="waid-card">'
+        +   '<div class="waid-card__head"><h3 class="waid-h3">' + escapeHTML(e.name || "") + '</h3></div>'
+        +   '<div class="waid-views">'
+        +     '<div class="waid-view waid-body" data-view="technical"><p>' + annotateGlossary(escapeHTML(e.technical || "")) + '</p></div>'
+        +     '<div class="waid-view waid-body" data-view="layman"><p>'    + annotateGlossary(escapeHTML(e.layman || "")) + '</p></div>'
+        +   '</div>'
+        + '</div>';
+    }).join("");
+  })();
+
+  /* ---------- pattern rationale ---------- */
+  (function patterns(){
+    var box = document.getElementById("waid-pattern-list");
+    if (!box) return;
+    var entries = (get("pattern_rationale.entries") || []);
+    if (!entries.length) {
+      box.innerHTML = '<div class="waid-empty">No pattern entries.</div>';
+      return;
+    }
+    box.innerHTML = entries.map(function(e){
+      var trade = e.tradeoffs
+        ? '<p style="margin-top:10px;color:var(--waid-color-text-muted);font-size:var(--waid-fs-caption);"><strong style="color:var(--waid-color-text);">Trade-off — </strong>' + annotateGlossary(escapeHTML(e.tradeoffs)) + '</p>'
+        : '';
+      return ''
+        + '<div class="waid-card">'
+        +   '<div class="waid-card__head"><h3 class="waid-h3">' + escapeHTML(e.pattern || "") + '</h3></div>'
+        +   '<div class="waid-views">'
+        +     '<div class="waid-view waid-body" data-view="technical"><p>' + annotateGlossary(escapeHTML(e.rationale_technical || "")) + '</p>' + trade + '</div>'
+        +     '<div class="waid-view waid-body" data-view="layman"><p>'    + annotateGlossary(escapeHTML(e.rationale_layman || "")) + '</p></div>'
+        +   '</div>'
+        + '</div>';
+    }).join("");
+  })();
+
+  /* ---------- pitfalls ---------- */
+  (function pitfalls(){
+    var box = document.getElementById("waid-pitfall-list");
+    if (!box) return;
+    var entries = (get("pitfalls.entries") || []);
+    if (!entries.length) {
+      box.innerHTML = '<div class="waid-empty">No pitfalls flagged. Either the project is unusually clean, or this analysis was minimal.</div>';
+      return;
+    }
+    // sort high → medium → low
+    var rank = { high: 0, medium: 1, low: 2 };
+    entries.sort(function(a,b){ return (rank[a.severity]||9) - (rank[b.severity]||9); });
+
+    box.innerHTML = entries.map(function(e){
+      var sev = (e.severity || "low").toLowerCase();
+      return ''
+        + '<div class="waid-card waid-pitfall" data-severity="' + escapeHTML(sev) + '">'
+        +   '<div class="waid-card__head">'
+        +     '<h3 class="waid-h3">' + escapeHTML(e.title || "") + '</h3>'
+        +     '<span class="waid-sev" data-severity="' + escapeHTML(sev) + '">' + escapeHTML(sev) + '</span>'
+        +   '</div>'
+        +   '<div class="waid-views">'
+        +     '<div class="waid-view waid-body" data-view="technical"><p>' + annotateGlossary(escapeHTML(e.technical || "")) + '</p></div>'
+        +     '<div class="waid-view waid-body" data-view="layman"><p>'    + annotateGlossary(escapeHTML(e.layman || "")) + '</p></div>'
+        +   '</div>'
+        + '</div>';
+    }).join("");
+  })();
+
+  /* ---------- glossary list ---------- */
+  (function gloss(){
+    var box = document.getElementById("waid-gloss-list");
+    if (!box) return;
+    var entries = (data.glossary || []);
+    if (!entries.length) {
+      box.innerHTML = '<div class="waid-empty" style="grid-column:1/-1;">No glossary terms in this report.</div>';
+      box.style.border = "0";
+      box.style.background = "transparent";
+      return;
+    }
+    var html = "";
+    entries.forEach(function(g){
+      html += ''
+        + '<div class="waid-gloss__term">' + escapeHTML(g.term) + '</div>'
+        + '<div class="waid-gloss__def">'
+        +   '<div class="waid-views">'
+        +     '<div class="waid-view" data-view="technical">' + escapeHTML(g.technical || "") + '</div>'
+        +     '<div class="waid-view" data-view="layman">'    + escapeHTML(g.layman || "")    + '</div>'
+        +   '</div>'
+        + '</div>';
+    });
+    box.innerHTML = html;
+  })();
+
+  /* ---------- quiz ---------- */
+  (function quiz(){
+    var box = document.getElementById("waid-quiz-list");
+    if (!box) return;
+    var entries = (data.quiz || []);
+    if (!entries.length) {
+      box.innerHTML = '<div class="waid-empty">No quiz questions in this report.</div>';
+      return;
+    }
+    box.innerHTML = entries.map(function(q, i){
+      var choices = (q.choices || []).map(function(c, j){
+        return ''
+          + '<li>'
+          +   '<button class="waid-quiz__choice" data-q="' + i + '" data-c="' + j + '">'
+          +     '<span class="waid-quiz__icon" aria-hidden="true">' + String.fromCharCode(65 + j) + '</span>'
+          +     '<span>' + escapeHTML(c) + '</span>'
+          +   '</button>'
+          + '</li>';
+      }).join("");
+      return ''
+        + '<div class="waid-quiz__card" data-q="' + i + '">'
+        +   '<div class="waid-quiz__qmeta">Question ' + (i + 1) + ' / ' + entries.length + '</div>'
+        +   '<p class="waid-quiz__q">' + escapeHTML(q.question || "") + '</p>'
+        +   '<ul class="waid-quiz__choices">' + choices + '</ul>'
+        +   '<div class="waid-quiz__explain" data-q="' + i + '">'
+        +     '<div class="waid-views">'
+        +       '<div class="waid-view" data-view="technical">' + annotateGlossary(escapeHTML(q.explanation_technical || "")) + '</div>'
+        +       '<div class="waid-view" data-view="layman">'    + annotateGlossary(escapeHTML(q.explanation_layman || ""))    + '</div>'
+        +     '</div>'
+        +   '</div>'
+        + '</div>';
+    }).join("");
+
+    box.addEventListener("click", function(ev){
+      var btn = ev.target.closest(".waid-quiz__choice");
+      if (!btn) return;
+      var qi = +btn.getAttribute("data-q");
+      var ci = +btn.getAttribute("data-c");
+      var q = entries[qi];
+      if (!q) return;
+      var card = btn.closest(".waid-quiz__card");
+      var allChoices = card.querySelectorAll(".waid-quiz__choice");
+      // already answered? bail.
+      var alreadyAnswered = false;
+      allChoices.forEach(function(c){ if (c.disabled) alreadyAnswered = true; });
+      if (alreadyAnswered) return;
+
+      var correctIdx = q.answerIndex;
+      allChoices.forEach(function(c, idx){
+        c.disabled = true;
+        if (idx === correctIdx) c.setAttribute("data-state", idx === ci ? "correct" : "reveal");
+        else if (idx === ci) c.setAttribute("data-state", "wrong");
+      });
+      var explain = card.querySelector(".waid-quiz__explain");
+      if (explain) explain.classList.add("is-visible");
+    });
+    // keyboard support comes free via <button>.
+  })();
+
+  /* ============================================================
+     view toggle (Technical ↔ Layman/Plain)
+     ============================================================ */
+  (function viewToggle(){
+    var html = document.documentElement;
+    var stored = null;
+    try { stored = localStorage.getItem("waid:view"); } catch (e) {}
+    if (stored === "technical" || stored === "layman") html.setAttribute("data-view", stored);
+
+    var buttons = document.querySelectorAll(".waid-viewtoggle button[data-view]");
+    function setView(v){
+      html.setAttribute("data-view", v);
+      try { localStorage.setItem("waid:view", v); } catch(e){}
+      buttons.forEach(function(b){
+        b.setAttribute("aria-pressed", b.getAttribute("data-view") === v ? "true" : "false");
+      });
+    }
+    setView(html.getAttribute("data-view") || "technical");
+    buttons.forEach(function(b){
+      b.addEventListener("click", function(){ setView(b.getAttribute("data-view")); });
+    });
+  })();
+
+  /* ============================================================
+     theme toggle (light / auto / dark)
+     ============================================================ */
+  (function themeToggle(){
+    var html = document.documentElement;
+    var stored = null;
+    try { stored = localStorage.getItem("waid:theme"); } catch (e) {}
+    if (stored === "light" || stored === "dark" || stored === "auto") html.setAttribute("data-theme", stored);
+
+    var buttons = document.querySelectorAll(".waid-themetoggle button[data-theme]");
+    function setTheme(t){
+      html.setAttribute("data-theme", t);
+      try { localStorage.setItem("waid:theme", t); } catch(e){}
+      buttons.forEach(function(b){
+        b.setAttribute("aria-pressed", b.getAttribute("data-theme") === t ? "true" : "false");
+      });
+      // re-render mermaid to pick up new colors
+      try { renderMermaid(); } catch(e){}
+    }
+    setTheme(html.getAttribute("data-theme") || "auto");
+    buttons.forEach(function(b){
+      b.addEventListener("click", function(){ setTheme(b.getAttribute("data-theme")); });
+    });
+
+    // react to system change when in auto
+    if (window.matchMedia) {
+      var mq = window.matchMedia("(prefers-color-scheme: dark)");
+      var handler = function(){
+        if (html.getAttribute("data-theme") === "auto") {
+          try { renderMermaid(); } catch(e){}
+        }
+      };
+      if (mq.addEventListener) mq.addEventListener("change", handler);
+      else if (mq.addListener) mq.addListener(handler);
+    }
+  })();
+
+  /* ============================================================
+     mermaid render (light + dark aware)
+     ============================================================ */
+  function isDarkActive() {
+    var t = document.documentElement.getAttribute("data-theme");
+    if (t === "dark") return true;
+    if (t === "light") return false;
+    return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+  }
+
+  function readVar(name) {
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  }
+
+  var mermaidSeq = 0;
+  function renderMermaid() {
+    if (typeof mermaid === "undefined") return;
+    var src = get("architecture.mermaid");
+    var holder = document.getElementById("waid-mermaid");
+    if (!holder) return;
+    if (!src || !String(src).trim()) {
+      holder.style.display = "none";
+      return;
+    }
+    holder.style.display = "";
+    var dark = isDarkActive();
+    mermaid.initialize({
+      startOnLoad: false,
+      theme: "base",
+      securityLevel: "strict",
+      fontFamily: readVar("--waid-font-sans") || "Inter, sans-serif",
+      themeVariables: {
+        background: "transparent",
+        primaryColor: dark ? "#1a2030" : "#ffffff",
+        primaryTextColor: dark ? "#e6e3dc" : "#1a1814",
+        primaryBorderColor: dark ? "#2e343e" : "#d6cfc1",
+        lineColor: dark ? "#5a6275" : "#94907f",
+        secondaryColor: dark ? "#1d222b" : "#f4f1ec",
+        tertiaryColor: dark ? "#0e1014" : "#fbfaf7",
+        edgeLabelBackground: dark ? "#161a21" : "#fbfaf7"
+      }
+    });
+    var id = "waid-mm-" + (++mermaidSeq);
+    holder.innerHTML = "";
+    try {
+      var p = mermaid.render(id, String(src));
+      if (p && typeof p.then === "function") {
+        p.then(function(res){
+          holder.innerHTML = res.svg;
+          if (typeof res.bindFunctions === "function") res.bindFunctions(holder);
+        }).catch(function(err){
+          holder.innerHTML = '<div class="waid-empty">Diagram failed to render.</div>';
+          console.error("mermaid:", err);
+        });
+      }
+    } catch (err) {
+      holder.innerHTML = '<div class="waid-empty">Diagram failed to render.</div>';
+      console.error("mermaid:", err);
+    }
+  }
+  // wait one tick to ensure mermaid script is loaded
+  if (document.readyState === "complete") renderMermaid();
+  else window.addEventListener("load", renderMermaid);
+
+  /* ============================================================
+     scroll-spy TOC
+     ============================================================ */
+  (function scrollSpy(){
+    var sections = document.querySelectorAll(".waid-section[id]");
+    var links = document.querySelectorAll(".waid-toc__item a");
+    if (!sections.length) return;
+    var byId = {};
+    links.forEach(function(a){
+      var id = a.getAttribute("href").slice(1);
+      byId[id] = a.parentElement;
+    });
+    var observer = new IntersectionObserver(function(entries){
+      // pick the topmost intersecting section
+      var visible = entries.filter(function(e){ return e.isIntersecting; });
+      if (!visible.length) return;
+      visible.sort(function(a,b){ return a.boundingClientRect.top - b.boundingClientRect.top; });
+      var id = visible[0].target.id;
+      links.forEach(function(a){ a.parentElement.classList.remove("is-active"); });
+      if (byId[id]) byId[id].classList.add("is-active");
+    }, {
+      rootMargin: "-30% 0px -55% 0px",
+      threshold: 0.01
+    });
+    sections.forEach(function(s){ observer.observe(s); });
+  })();
+
+  /* ============================================================
+     mobile TOC drawer
+     ============================================================ */
+  (function tocDrawer(){
+    var trigger = document.getElementById("waid-toc-trigger");
+    var toc = document.getElementById("waid-toc");
+    var backdrop = document.getElementById("waid-toc-backdrop");
+    if (!trigger || !toc || !backdrop) return;
+    function open(){ toc.classList.add("is-open"); backdrop.removeAttribute("hidden"); requestAnimationFrame(function(){ backdrop.classList.add("is-open"); }); trigger.setAttribute("aria-expanded","true"); }
+    function close(){ toc.classList.remove("is-open"); backdrop.classList.remove("is-open"); setTimeout(function(){ backdrop.setAttribute("hidden",""); }, 220); trigger.setAttribute("aria-expanded","false"); }
+    trigger.addEventListener("click", function(){ if (toc.classList.contains("is-open")) close(); else open(); });
+    backdrop.addEventListener("click", close);
+    toc.addEventListener("click", function(ev){
+      if (ev.target.closest("a")) close();
+    });
+    document.addEventListener("keydown", function(ev){ if (ev.key === "Escape") close(); });
+  })();
+
+  /* ============================================================
+     glossary tooltips
+     ============================================================ */
+  (function tooltips(){
+    var tip = document.getElementById("waid-tooltip");
+    if (!tip) return;
+    var current = null;
+
+    function position(target){
+      var r = target.getBoundingClientRect();
+      // measure tooltip
+      tip.style.left = "-9999px"; tip.style.top = "-9999px";
+      tip.classList.add("is-visible");
+      var tr = tip.getBoundingClientRect();
+      var x = r.left + r.width/2 - tr.width/2;
+      var y = r.top - tr.height - 10;
+      var below = false;
+      if (y < 8) { y = r.bottom + 10; below = true; }
+      x = Math.max(8, Math.min(window.innerWidth - tr.width - 8, x));
+      tip.style.left = x + "px";
+      tip.style.top  = y + "px";
+    }
+
+    function show(target){
+      var term = target.getAttribute("data-term");
+      var entry = glossaryByLower[term.toLowerCase()];
+      if (!entry) return;
+      var view = document.documentElement.getAttribute("data-view") || "technical";
+      var def = (view === "layman" ? entry.layman : entry.technical) || entry.technical || entry.layman || "";
+      tip.innerHTML = '<div class="waid-tooltip__term">' + escapeHTML(entry.term) + '</div>' + escapeHTML(def);
+      tip.setAttribute("aria-hidden", "false");
+      position(target);
+      current = target;
+    }
+    function hide(){
+      tip.classList.remove("is-visible");
+      tip.setAttribute("aria-hidden","true");
+      current = null;
+    }
+
+    document.addEventListener("mouseover", function(ev){
+      var t = ev.target.closest(".waid-glossary-ref");
+      if (t) show(t);
+    });
+    document.addEventListener("mouseout", function(ev){
+      var t = ev.target.closest(".waid-glossary-ref");
+      if (t && !t.contains(ev.relatedTarget)) hide();
+    });
+    document.addEventListener("focusin", function(ev){
+      var t = ev.target.closest(".waid-glossary-ref");
+      if (t) show(t);
+    });
+    document.addEventListener("focusout", function(ev){
+      var t = ev.target.closest(".waid-glossary-ref");
+      if (t) hide();
+    });
+    window.addEventListener("scroll", function(){ if (current) position(current); }, { passive: true });
+    window.addEventListener("resize", function(){ if (current) position(current); });
+  })();
+
+})();
+</script>
+</body>
+</html>

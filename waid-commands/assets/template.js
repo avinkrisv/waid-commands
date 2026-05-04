@@ -1,1028 +1,503 @@
-// InteractiveJS — full implementation for waid-commands HTML report.
-// Wrapped in IIFE; exposes window.WAID = { init, setView, setTheme, getState }.
-// Tech: vanilla ES2020 — no bundler, no transpiler, no import/require.
-// Tokens: --waid-color-quiz-correct, --waid-color-quiz-incorrect, --waid-duration-fast,
-//         --waid-duration-medium, --waid-z-tooltip (all owned by CSS; referenced in comments only).
-
+/* ============================================================
+   waid-commands · template.js — vanilla, single-file
+   ============================================================ */
 (function () {
-  'use strict';
+  "use strict";
 
-  // ─── Internal state ────────────────────────────────────────────────────────
+  /* ---------- read fixture ---------- */
+  var dataNode = document.getElementById("waid-data");
+  var data = {};
+  try { data = JSON.parse(dataNode.textContent); } catch (e) { console.error("waid: bad data", e); }
 
-  let _initialized = false;
-  let _analysis = null;
-  let _glossaryIndex = new Map(); // term → { layman, technical }
-  let _collapsedSections = new Set();
-  let _mermaidSvg = null;         // last rendered SVG string
-  let _scrollSpyObserver = null;
-  let _mediaQueryDark = null;
-
-  // ─── localStorage helpers (tolerates private browsing) ────────────────────
-
-  function lsGet(key) {
-    try { return localStorage.getItem(key); } catch (_) { return null; }
+  function get(path) {
+    return path.split(".").reduce(function (o, k) { return (o == null) ? undefined : o[k]; }, data);
   }
-  function lsSet(key, value) {
-    try { localStorage.setItem(key, value); } catch (_) { /* ignore */ }
-  }
-
-  // ─── Custom event helper ───────────────────────────────────────────────────
-
-  function emit(name, detail) {
-    document.dispatchEvent(new CustomEvent(name, { detail: detail || {} }));
-  }
-
-  // ─── Minimal Markdown renderer (safe: HTML-escaped first, then patterns) ───
-  // Only: **bold**, *italic*, `code`, [text](url), newlines → <br>.
-  // No raw HTML passthrough.
-
-  function _md(str) {
-    if (!str) return '';
-    // 1. HTML-escape
-    let s = str
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
-    // 2. Apply safe Markdown patterns on the escaped string
-    s = s
-      // `code`
-      .replace(/`([^`]+)`/g, '<code>$1</code>')
-      // **bold**
-      .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-      // *italic* (only after bold consumed)
-      .replace(/\*([^*]+)\*/g, '<em>$1</em>')
-      // [text](url) — only https?:// URLs allowed
-      .replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, '<a href="$2" rel="noopener noreferrer">$1</a>')
-      // newlines
-      .replace(/\n/g, '<br>');
-    return s;
-  }
-
-  // ─── Safe slot fill (textContent by default; mdSlots use _md + innerHTML) ─
-
-  const MD_SLOTS = new Set(['technical', 'layman', 'explanation-layman', 'explanation-technical',
-    'analogy', 'why', 'tradeoffs', 'complexity', 'location']);
-
-  function fillSlots(fragment, data) {
-    fragment.querySelectorAll('[data-waid-slot]').forEach(function (el) {
-      const slot = el.getAttribute('data-waid-slot');
-      const value = data[slot];
-      if (value === undefined || value === null) return;
-      if (MD_SLOTS.has(slot)) {
-        // Limited Markdown path — safe because input is first HTML-escaped in _md()
-        el.innerHTML = _md(String(value));
-      } else {
-        el.textContent = String(value);
-      }
+  function escapeHTML(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"})[c];
     });
   }
 
-  // ─── Clone a <template> and fill slots ────────────────────────────────────
+  /* ---------- glossary substitution ---------- */
+  // Wrap glossary terms (longest-first) in body text with .waid-glossary-ref
+  function buildGlossaryRegex(terms) {
+    if (!terms || !terms.length) return null;
+    var sorted = terms.slice().sort(function(a,b){ return b.term.length - a.term.length; });
+    var escaped = sorted.map(function(t){ return t.term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); });
+    return new RegExp("\\b(" + escaped.join("|") + ")\\b", "gi");
+  }
+  var glossaryTerms = (data.glossary || []);
+  var glossaryByLower = {};
+  glossaryTerms.forEach(function(t){ glossaryByLower[t.term.toLowerCase()] = t; });
+  var glossaryRegex = buildGlossaryRegex(glossaryTerms);
 
-  function cloneTemplate(id, data) {
-    const tpl = document.getElementById(id);
-    if (!tpl) { console.warn('[WAID] missing template #' + id); return null; }
-    const frag = tpl.content.cloneNode(true);
-    if (data) fillSlots(frag, data);
-    return frag;
+  function annotateGlossary(html) {
+    if (!glossaryRegex) return html;
+    return html.replace(glossaryRegex, function(match){
+      var key = match.toLowerCase();
+      if (!glossaryByLower[key]) return match;
+      return '<span class="waid-glossary-ref" data-term="' + escapeHTML(glossaryByLower[key].term) + '" tabindex="0">' + escapeHTML(match) + '</span>';
+    });
   }
 
-  // ─── Mermaid theme resolution ──────────────────────────────────────────────
-
-  function resolveMermaidTheme() {
-    const root = document.getElementById('waid-root');
-    const waidTheme = root ? root.dataset.waidTheme : 'auto';
-    if (waidTheme === 'light') return 'default';
-    if (waidTheme === 'dark')  return 'dark';
-    // auto: check OS preference
-    return (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)
-      ? 'dark' : 'default';
-  }
-
-  // ─── Mermaid hydration (async; degrades gracefully) ───────────────────────
-
-  function _hydrateMermaid(source) {
-    const container = document.getElementById('waid-arch-diagram');
-    if (!container) return;
-
-    if (!source) {
-      container.innerHTML = '<p class="waid-mermaid-fallback">No diagram available.</p>';
+  /* ---------- slot renderers ---------- */
+  document.querySelectorAll("[data-slot]").forEach(function(el){
+    var raw = get(el.getAttribute("data-slot"));
+    if (raw == null || raw === "") {
+      el.innerHTML = '<span class="waid-empty" style="display:inline-block;">No content for this view.</span>';
       return;
     }
-
-    function renderWithMermaid() {
-      if (typeof window.mermaid === 'undefined') return false;
-      try {
-        window.mermaid.initialize({
-          startOnLoad: false,
-          theme: resolveMermaidTheme(),
-          securityLevel: 'strict',
-          flowchart: { htmlLabels: false, useMaxWidth: true },
-          sequence: { useMaxWidth: true },
-          gantt: { useMaxWidth: true }
-        });
-        // mermaid.render returns a Promise in v10+, or accepts a callback in older versions
-        const result = window.mermaid.render('waid-mermaid-svg', source);
-        if (result && typeof result.then === 'function') {
-          result.then(function (out) {
-            _mermaidSvg = out.svg || out;
-            container.innerHTML = _mermaidSvg;
-            container.classList.add('waid-mermaid-loaded');
-          }).catch(function () {
-            showFallback();
-          });
-        } else if (typeof result === 'string') {
-          _mermaidSvg = result;
-          container.innerHTML = _mermaidSvg;
-          container.classList.add('waid-mermaid-loaded');
-        } else {
-          showFallback();
-        }
-        return true;
-      } catch (_) {
-        showFallback();
-        return true;
-      }
-    }
-
-    function showFallback() {
-      const pre = document.createElement('pre');
-      pre.className = 'waid-mermaid-fallback';
-      pre.textContent = source;
-      container.innerHTML = '';
-      container.appendChild(pre);
-    }
-
-    // Try immediately
-    if (renderWithMermaid()) return;
-
-    // Mermaid not yet loaded — listen for load event on its <script> tag
-    const mermaidScript = document.querySelector('script[src*="mermaid"]');
-    let retried = false;
-    let timeoutId = null;
-
-    function onMermaidLoad() {
-      if (retried) return;
-      retried = true;
-      clearTimeout(timeoutId);
-      if (!renderWithMermaid()) showFallback();
-    }
-
-    if (mermaidScript) {
-      mermaidScript.addEventListener('load', onMermaidLoad, { once: true });
-    }
-
-    // 8-second fallback
-    timeoutId = setTimeout(function () {
-      if (!retried) { retried = true; showFallback(); }
-    }, 8000);
-  }
-
-  // Re-render Mermaid when theme changes (if already rendered)
-  function _rerenderMermaid() {
-    if (!_analysis || !_analysis.architecture || !_analysis.architecture.mermaid) return;
-    const container = document.getElementById('waid-arch-diagram');
-    if (!container) return;
-    const source = _analysis.architecture.mermaid;
-    if (!source) return;
-    if (typeof window.mermaid === 'undefined') return;
-    try {
-      window.mermaid.initialize({
-          startOnLoad: false,
-          theme: resolveMermaidTheme(),
-          securityLevel: 'strict',
-          flowchart: { htmlLabels: false, useMaxWidth: true },
-          sequence: { useMaxWidth: true },
-          gantt: { useMaxWidth: true }
-        });
-      const result = window.mermaid.render('waid-mermaid-svg-2', source);
-      if (result && typeof result.then === 'function') {
-        result.then(function (out) {
-          _mermaidSvg = out.svg || out;
-          container.innerHTML = _mermaidSvg;
-          container.classList.add('waid-mermaid-loaded');
-        }).catch(function () { /* keep current */ });
-      } else if (typeof result === 'string') {
-        _mermaidSvg = result;
-        container.innerHTML = _mermaidSvg;
-        container.classList.add('waid-mermaid-loaded');
-      }
-    } catch (_) { /* keep current */ }
-  }
-
-  // ─── Section renderers ─────────────────────────────────────────────────────
-
-  function _renderOverview(a) {
-    const body = document.getElementById('waid-section-body-overview');
-    if (!body) return;
-    // Narrative prose (Markdown-safe)
-    const techP = document.createElement('p');
-    techP.setAttribute('data-waid-view', 'technical');
-    techP.innerHTML = _md(a.overview.technical || '');
-    const laymanP = document.createElement('p');
-    laymanP.setAttribute('data-waid-view', 'layman');
-    laymanP.innerHTML = _md(a.overview.layman || '');
-    body.appendChild(techP);
-    body.appendChild(laymanP);
-  }
-
-  function _renderTechStack(a) {
-    const body = document.getElementById('waid-section-body-tech-stack');
-    if (!body) return;
-    const section = document.getElementById('waid-section-tech-stack');
-
-    // Section-level narrative
-    const techP = document.createElement('p');
-    techP.setAttribute('data-waid-view', 'technical');
-    techP.innerHTML = _md(a.tech_stack.technical || '');
-    const laymanP = document.createElement('p');
-    laymanP.setAttribute('data-waid-view', 'layman');
-    laymanP.innerHTML = _md(a.tech_stack.layman || '');
-    body.appendChild(techP);
-    body.appendChild(laymanP);
-
-    const entries = (a.tech_stack.entries || []);
-    if (entries.length === 0) {
-      if (section) section.dataset.waidEmpty = 'true';
-      const notice = document.createElement('p');
-      notice.className = 'waid-empty-notice';
-      notice.textContent = 'No entries available.';
-      body.appendChild(notice);
-      return;
-    }
-
-    entries.forEach(function (entry) {
-      const frag = cloneTemplate('tpl-tech-stack-entry', {
-        name:      entry.name      || '',
-        kind:      entry.role      || '',
-        version:   entry.version   || '',
-        technical: '',
-        layman:    '',
-        analogy:   ''
-      });
-      if (frag) body.appendChild(frag);
-    });
-  }
-
-  function _renderArchitecture(a) {
-    const body = document.getElementById('waid-section-body-architecture');
-    if (!body) return;
-
-    // Section narrative (above diagram)
-    const techP = document.createElement('p');
-    techP.setAttribute('data-waid-view', 'technical');
-    techP.innerHTML = _md(a.architecture.technical || '');
-    const laymanP = document.createElement('p');
-    laymanP.setAttribute('data-waid-view', 'layman');
-    laymanP.innerHTML = _md(a.architecture.layman || '');
-    body.insertBefore(techP, body.firstChild);
-    body.insertBefore(laymanP, body.firstChild);
-
-    // Mermaid diagram (async)
-    _hydrateMermaid(a.architecture.mermaid || '');
-  }
-
-  function _renderEntriesSection(sectionName, bodyId, tplId, entries, buildData) {
-    const body = document.getElementById(bodyId);
-    const section = document.getElementById('waid-section-' + sectionName);
-    if (!body) return;
-
-    if (!entries || entries.length === 0) {
-      if (section) section.dataset.waidEmpty = 'true';
-      const notice = document.createElement('p');
-      notice.className = 'waid-empty-notice';
-      notice.textContent = 'No entries available.';
-      body.appendChild(notice);
-      return;
-    }
-
-    entries.forEach(function (entry, idx) {
-      const frag = cloneTemplate(tplId, buildData(entry, idx));
-      if (frag) body.appendChild(frag);
-    });
-  }
-
-  function _renderNarrativeAndEntries(a, field, sectionName, tplId, buildData) {
-    const body = document.getElementById('waid-section-body-' + sectionName);
-    if (!body) return;
-    const section = document.getElementById('waid-section-' + sectionName);
-    const sectionData = a[field] || {};
-
-    // Narrative
-    const techP = document.createElement('p');
-    techP.setAttribute('data-waid-view', 'technical');
-    techP.innerHTML = _md(sectionData.technical || '');
-    const laymanP = document.createElement('p');
-    laymanP.setAttribute('data-waid-view', 'layman');
-    laymanP.innerHTML = _md(sectionData.layman || '');
-    body.appendChild(techP);
-    body.appendChild(laymanP);
-
-    const entries = sectionData.entries || [];
-    if (entries.length === 0) {
-      if (section) section.dataset.waidEmpty = 'true';
-      const notice = document.createElement('p');
-      notice.className = 'waid-empty-notice';
-      notice.textContent = 'No entries available.';
-      body.appendChild(notice);
-      return;
-    }
-
-    entries.forEach(function (entry, idx) {
-      const frag = cloneTemplate(tplId, buildData(entry, idx));
-      if (frag) body.appendChild(frag);
-    });
-  }
-
-  function _renderGlossary(a) {
-    const body = document.getElementById('waid-section-body-glossary');
-    const section = document.getElementById('waid-section-glossary');
-    if (!body) return;
-    const entries = a.glossary || [];
-
-    if (entries.length === 0) {
-      if (section) section.dataset.waidEmpty = 'true';
-      const notice = document.createElement('p');
-      notice.className = 'waid-empty-notice';
-      notice.textContent = 'No entries available.';
-      body.appendChild(notice);
-      return;
-    }
-
-    entries.forEach(function (entry) {
-      const frag = cloneTemplate('tpl-glossary-entry', {
-        term:      entry.term    || '',
-        layman:    entry.layman  || '',
-        technical: entry.technical || entry.layman || ''
-      });
-      if (!frag) return;
-
-      // Apply glossary-term class to <dt> element so tooltip wires up
-      const dt = frag.querySelector('dt[data-waid-slot="term"]');
-      if (dt) {
-        dt.classList.add('waid-glossary-term');
-        dt.dataset.term = entry.term || '';
-      }
-
-      body.appendChild(frag);
-    });
-  }
-
-  function _renderQuiz(a) {
-    const body = document.getElementById('waid-section-body-quiz');
-    const section = document.getElementById('waid-section-quiz');
-    if (!body) return;
-    const items = a.quiz || [];
-
-    if (items.length === 0) {
-      if (section) section.dataset.waidEmpty = 'true';
-      const notice = document.createElement('p');
-      notice.className = 'waid-empty-notice';
-      notice.textContent = 'No entries available.';
-      body.appendChild(notice);
-      return;
-    }
-
-    items.forEach(function (item, questionIndex) {
-      const frag = cloneTemplate('tpl-quiz-entry', {
-        question:              item.question              || '',
-        'explanation-layman':    item.explanation_layman    || '',
-        'explanation-technical': item.explanation_technical || ''
-      });
-      if (!frag) return;
-
-      const entryEl = frag.querySelector('.waid-quiz-entry');
-      const choicesEl = frag.querySelector('.waid-quiz-choices');
-
-      // Validate answerIndex
-      const rawIdx = item.answerIndex;
-      const choices = item.choices || [];
-      let answerIndex = parseInt(rawIdx, 10);
-      if (isNaN(answerIndex) || answerIndex < 0 || answerIndex >= choices.length) {
-        console.warn('[WAID] quiz item ' + questionIndex + ': answerIndex ' + rawIdx +
-          ' is out of bounds (choices.length=' + choices.length + '). Correct answer will not be highlighted.');
-        answerIndex = -1;
-      }
-
-      // Store answer index on container (cosmetic obfuscation only)
-      if (entryEl) entryEl.dataset.answerIndex = String(answerIndex);
-
-      // Clone choice buttons
-      choices.forEach(function (choiceText, choiceIdx) {
-        const cfrag = cloneTemplate('tpl-quiz-choice', { label: choiceText });
-        if (!cfrag) return;
-        const btn = cfrag.querySelector('.waid-quiz-choice');
-        if (btn) btn.dataset.choiceIndex = String(choiceIdx);
-        if (choicesEl) choicesEl.appendChild(cfrag);
-      });
-
-      body.appendChild(frag);
-    });
-  }
-
-  // ─── Render all sections ───────────────────────────────────────────────────
-
-  function _renderAllSections(a) {
-    _renderOverview(a);
-    _renderTechStack(a);
-    _renderArchitecture(a);
-
-    _renderNarrativeAndEntries(a, 'algorithms', 'algorithms', 'tpl-algo-entry', function (e) {
-      return { name: e.name || '', technical: e.technical || '', layman: e.layman || '',
-        complexity: '', location: '' };
-    });
-
-    _renderNarrativeAndEntries(a, 'methodologies', 'methodologies', 'tpl-method-entry', function (e) {
-      return { name: e.name || '', technical: e.technical || '', layman: e.layman || '' };
-    });
-
-    _renderNarrativeAndEntries(a, 'pattern_rationale', 'pattern-rationale', 'tpl-pattern-entry', function (e) {
-      return {
-        pattern:   e.pattern || '',
-        technical: e.rationale_technical || '',
-        layman:    e.rationale_layman    || '',
-        why:       '',
-        tradeoffs: ''
-      };
-    });
-
-    _renderNarrativeAndEntries(a, 'pitfalls', 'pitfalls', 'tpl-pitfall-entry', function (e) {
-      const sev = ['low', 'medium', 'high'].indexOf(e.severity) !== -1 ? e.severity : 'medium';
-      const frag = cloneTemplate('tpl-pitfall-entry', {
-        title:     e.title    || '',
-        severity:  sev,
-        technical: e.technical || '',
-        layman:    e.layman   || ''
-      });
-      // Apply severity data-attribute to the article element
-      if (frag) {
-        const article = frag.querySelector('.waid-pitfall-entry');
-        if (article) article.dataset.severity = sev;
-      }
-      return frag; // NOTE: pitfall uses a special path — see below
-    });
-
-    _renderGlossary(a);
-    _renderQuiz(a);
-  }
-
-  // Pitfall rendering needs special handling (severity on article), so patch it:
-  const _origRenderPitfalls = _renderNarrativeAndEntries;
-  function _renderPitfalls(a) {
-    const body = document.getElementById('waid-section-body-pitfalls');
-    const section = document.getElementById('waid-section-pitfalls');
-    if (!body) return;
-    const sectionData = a.pitfalls || {};
-
-    const techP = document.createElement('p');
-    techP.setAttribute('data-waid-view', 'technical');
-    techP.innerHTML = _md(sectionData.technical || '');
-    const laymanP = document.createElement('p');
-    laymanP.setAttribute('data-waid-view', 'layman');
-    laymanP.innerHTML = _md(sectionData.layman || '');
-    body.appendChild(techP);
-    body.appendChild(laymanP);
-
-    const entries = sectionData.entries || [];
-    if (entries.length === 0) {
-      if (section) section.dataset.waidEmpty = 'true';
-      const notice = document.createElement('p');
-      notice.className = 'waid-empty-notice';
-      notice.textContent = 'No entries available.';
-      body.appendChild(notice);
-      return;
-    }
-
-    entries.forEach(function (e) {
-      const sev = ['low', 'medium', 'high'].indexOf(e.severity) !== -1 ? e.severity : 'medium';
-      const frag = cloneTemplate('tpl-pitfall-entry', {
-        title:     e.title     || '',
-        severity:  sev,
-        technical: e.technical || '',
-        layman:    e.layman    || ''
-      });
-      if (!frag) return;
-      const article = frag.querySelector('.waid-pitfall-entry');
-      if (article) article.dataset.severity = sev;
-      body.appendChild(frag);
-    });
-  }
-
-  // ─── Build TOC ─────────────────────────────────────────────────────────────
-
-  const SECTIONS = [
-    { name: 'overview',          title: 'Overview'                },
-    { name: 'tech-stack',        title: 'Tech Stack'              },
-    { name: 'architecture',      title: 'Architecture'            },
-    { name: 'algorithms',        title: 'Key Algorithms'          },
-    { name: 'methodologies',     title: 'Methodologies'           },
-    { name: 'pattern-rationale', title: 'Pattern Rationale'       },
-    { name: 'pitfalls',          title: 'Pitfalls'                },
-    { name: 'glossary',          title: 'Glossary'                },
-    { name: 'quiz',              title: 'Check Your Understanding' }
-  ];
-
-  function _buildToc() {
-    const tocList = document.getElementById('waid-toc-list');
-    if (!tocList) return;
-    tocList.innerHTML = '';
-
-    SECTIONS.forEach(function (s) {
-      const sectionEl = document.getElementById('waid-section-' + s.name);
-      if (!sectionEl) return;
-
-      const frag = cloneTemplate('tpl-toc-item', { label: s.title });
-      if (!frag) return;
-
-      const li = frag.querySelector('.waid-toc-item');
-      const a  = frag.querySelector('.waid-toc-link');
-
-      if (li) {
-        li.dataset.section = s.name;
-        if (sectionEl.dataset.waidEmpty === 'true') {
-          li.classList.add('waid-toc-item--empty');
-        }
-      }
-      if (a) {
-        a.href = '#waid-section-' + s.name;
-        a.addEventListener('click', function (e) {
-          e.preventDefault();
-          sectionEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        });
-      }
-
-      tocList.appendChild(frag);
-    });
-  }
-
-  // ─── Scroll-spy via IntersectionObserver ──────────────────────────────────
-
-  function _startScrollSpy() {
-    if (!('IntersectionObserver' in window)) return;
-    if (_scrollSpyObserver) _scrollSpyObserver.disconnect();
-
-    _scrollSpyObserver = new IntersectionObserver(function (entries) {
-      // Find the topmost visible section
-      let topmost = null;
-      let topmostY = Infinity;
-
-      entries.forEach(function (entry) {
-        if (entry.isIntersecting) {
-          const y = entry.boundingClientRect.top;
-          if (y < topmostY) { topmostY = y; topmost = entry.target; }
-        }
-      });
-
-      if (!topmost) return;
-      const activeName = topmost.dataset.waidSection;
-
-      document.querySelectorAll('.waid-toc-item').forEach(function (li) {
-        li.classList.toggle('waid-toc-item--active', li.dataset.section === activeName);
-      });
-    }, { threshold: 0.2 });
-
-    document.querySelectorAll('[data-waid-section]').forEach(function (el) {
-      _scrollSpyObserver.observe(el);
-    });
-  }
-
-  // ─── Section collapse/expand ───────────────────────────────────────────────
-
-  function _wireCollapseToggles() {
-    document.querySelectorAll('.waid-section-toggle').forEach(function (btn) {
-      btn.addEventListener('click', function () {
-        const bodyId = btn.getAttribute('aria-controls');
-        const bodyEl = bodyId ? document.getElementById(bodyId) : null;
-        const expanded = btn.getAttribute('aria-expanded') === 'true';
-        const nowExpanded = !expanded;
-
-        btn.setAttribute('aria-expanded', String(nowExpanded));
-        if (bodyEl) bodyEl.dataset.collapsed = String(!nowExpanded);
-
-        // Track collapsed state in memory
-        const sectionEl = btn.closest('[data-waid-section]');
-        const sectionName = sectionEl ? sectionEl.dataset.waidSection : null;
-        if (sectionName) {
-          if (nowExpanded) _collapsedSections.delete(sectionName);
-          else             _collapsedSections.add(sectionName);
-        }
-
-        emit('waid:section-toggle', { sectionName: sectionName, expanded: nowExpanded });
-      });
-    });
-  }
-
-  // ─── View toggle ──────────────────────────────────────────────────────────
-
-  function _wireViewToggle() {
-    const btn = document.getElementById('waid-view-toggle');
-    if (!btn) return;
-    btn.addEventListener('click', function () {
-      const root = document.getElementById('waid-root');
-      const current = root ? root.dataset.waidView : 'technical';
-      const next = current === 'technical' ? 'layman' : 'technical';
-      window.WAID.setView(next);
-    });
-  }
-
-  // ─── Theme toggle ─────────────────────────────────────────────────────────
-
-  const THEME_CYCLE = ['auto', 'light', 'dark'];
-  const THEME_ICONS = { auto: '◐', light: '☀', dark: '☽' };
-
-  function _updateThemeIcon(theme) {
-    const btn = document.getElementById('waid-theme-toggle');
-    if (btn) btn.textContent = THEME_ICONS[theme] || THEME_ICONS.auto;
-  }
-
-  function _wireThemeToggle() {
-    const btn = document.getElementById('waid-theme-toggle');
-    if (!btn) return;
-    btn.addEventListener('click', function () {
-      const root = document.getElementById('waid-root');
-      const current = root ? root.dataset.waidTheme : 'auto';
-      const idx = THEME_CYCLE.indexOf(current);
-      const next = THEME_CYCLE[(idx + 1) % THEME_CYCLE.length];
-      window.WAID.setTheme(next);
-    });
-  }
-
-  // ─── prefers-color-scheme listener (for auto theme) ──────────────────────
-
-  function _wireMediaQuery() {
-    _mediaQueryDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)');
-    if (!_mediaQueryDark) return;
-    _mediaQueryDark.addEventListener('change', function () {
-      const root = document.getElementById('waid-root');
-      if (root && root.dataset.waidTheme === 'auto') {
-        _rerenderMermaid();
-      }
-    });
-  }
-
-  // ─── Glossary tooltips ────────────────────────────────────────────────────
-
-  function _buildGlossaryIndex(a) {
-    _glossaryIndex = new Map();
-    (a.glossary || []).forEach(function (entry) {
-      if (entry.term) {
-        _glossaryIndex.set(entry.term, {
-          layman:    entry.layman    || '',
-          technical: entry.technical || entry.layman || ''
-        });
-      }
-    });
-  }
-
-  // Lazy tooltip creation — created on first hover of each unique term
-  const _tooltipMap = new Map(); // term → tooltip DOM element
-
-  function _getOrCreateTooltip(term) {
-    if (_tooltipMap.has(term)) return _tooltipMap.get(term);
-    const div = document.createElement('div');
-    div.role = 'tooltip';
-    div.id = 'waid-tooltip-' + term.replace(/\s+/g, '-');
-    div.className = 'waid-tooltip';
-    div.hidden = true;
-    document.body.appendChild(div);
-    _tooltipMap.set(term, div);
-    return div;
-  }
-
-  function _positionTooltip(tooltip, anchor) {
-    const rect = anchor.getBoundingClientRect();
-    const vpW = window.innerWidth;
-    const vpH = window.innerHeight;
-    const ttW = 288; // ~18rem estimate
-    const ttH = 80;  // estimate
-    let top  = rect.bottom + 6;
-    let left = rect.left;
-
-    // Clip right edge
-    if (left + ttW > vpW - 8) left = vpW - ttW - 8;
-    // Clip bottom — open upward
-    if (top + ttH > vpH - 8) top = rect.top - ttH - 6;
-
-    tooltip.style.top  = top  + 'px';
-    tooltip.style.left = left + 'px';
-  }
-
-  function _wireGlossaryTooltips() {
-    document.addEventListener('mouseover', function (e) {
-      const term = e.target.closest && e.target.closest('.waid-glossary-term');
-      if (!term) return;
-      const termName = term.dataset.term || term.textContent;
-      const def = _glossaryIndex.get(termName);
-      if (!def) return;
-
-      const tooltip = _getOrCreateTooltip(termName);
-      const root = document.getElementById('waid-root');
-      const view = root ? root.dataset.waidView : 'technical';
-      tooltip.textContent = view === 'layman' ? def.layman : def.technical;
-      tooltip.hidden = false;
-      _positionTooltip(tooltip, term);
-    });
-
-    document.addEventListener('mouseout', function (e) {
-      const term = e.target.closest && e.target.closest('.waid-glossary-term');
-      if (!term) return;
-      const termName = term.dataset.term || term.textContent;
-      const tooltip = _tooltipMap.get(termName);
-      if (tooltip) tooltip.hidden = true;
-    });
-
-    document.addEventListener('focusin', function (e) {
-      const term = e.target.closest && e.target.closest('.waid-glossary-term');
-      if (!term) return;
-      const termName = term.dataset.term || term.textContent;
-      const def = _glossaryIndex.get(termName);
-      if (!def) return;
-      const tooltip = _getOrCreateTooltip(termName);
-      const root = document.getElementById('waid-root');
-      const view = root ? root.dataset.waidView : 'technical';
-      tooltip.textContent = view === 'layman' ? def.layman : def.technical;
-      tooltip.hidden = false;
-      _positionTooltip(tooltip, term);
-    });
-
-    document.addEventListener('focusout', function (e) {
-      const term = e.target.closest && e.target.closest('.waid-glossary-term');
-      if (!term) return;
-      const termName = term.dataset.term || term.textContent;
-      const tooltip = _tooltipMap.get(termName);
-      if (tooltip) tooltip.hidden = true;
-    });
-  }
-
-  // ─── Quiz logic ───────────────────────────────────────────────────────────
-
-  function _wireQuiz() {
-    document.addEventListener('click', function (e) {
-      const btn = e.target.closest && e.target.closest('.waid-quiz-choice');
-      if (!btn) return;
-      if (btn.disabled) return;
-
-      const entry = btn.closest('.waid-quiz-entry');
-      if (!entry) return;
-
-      const answerIndex = parseInt(entry.dataset.answerIndex, 10);
-      const clickedIndex = parseInt(btn.dataset.choiceIndex, 10);
-      const correct = (clickedIndex === answerIndex);
-
-      // Mark chosen button
-      btn.classList.add(correct ? 'waid-quiz-correct' : 'waid-quiz-wrong');
-
-      // If wrong, also highlight the correct button
-      if (!correct && answerIndex >= 0) {
-        const allBtns = entry.querySelectorAll('.waid-quiz-choice');
-        allBtns.forEach(function (b) {
-          if (parseInt(b.dataset.choiceIndex, 10) === answerIndex) {
-            b.classList.add('waid-quiz-correct');
-          }
-        });
-      }
-
-      // Reveal explanation matching active view
-      const explanationEl = entry.querySelector('.waid-quiz-explanation');
-      if (explanationEl) explanationEl.hidden = false;
-
-      // Disable all choices in this entry
-      entry.querySelectorAll('.waid-quiz-choice').forEach(function (b) {
-        b.disabled = true;
-      });
-
-      // Find question index
-      const allEntries = Array.from(document.querySelectorAll('.waid-quiz-entry'));
-      const questionIndex = allEntries.indexOf(entry);
-
-      emit('waid:quiz-answer', { questionIndex: questionIndex, correct: correct });
-    });
-  }
-
-  // ─── Diagram zoom ─────────────────────────────────────────────────────────
-
-  function _wireDiagramZoom() {
-    const archDiagram = document.getElementById('waid-arch-diagram');
-    const dialog = document.getElementById('waid-diagram-zoom');
-    if (!archDiagram || !dialog) return;
-
-    archDiagram.addEventListener('click', function () {
-      // Clone current diagram content into zoom dialog
-      const zoomContent = dialog.querySelector('.waid-diagram-zoom-content');
-      if (zoomContent) {
-        zoomContent.innerHTML = '';
-        const clone = archDiagram.cloneNode(true);
-        clone.id = ''; // avoid duplicate ID
-        zoomContent.appendChild(clone);
-      }
-      if (typeof dialog.showModal === 'function') dialog.showModal();
-    });
-
-    // Close on backdrop click
-    dialog.addEventListener('click', function (e) {
-      const rect = dialog.getBoundingClientRect();
-      const clickedBackdrop = (
-        e.clientX < rect.left || e.clientX > rect.right ||
-        e.clientY < rect.top  || e.clientY > rect.bottom
-      );
-      if (clickedBackdrop && typeof dialog.close === 'function') dialog.close();
-    });
-
-    // Escape key closes dialog (native <dialog> supports this, but add for safety)
-    dialog.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape' && typeof dialog.close === 'function') dialog.close();
-    });
-  }
-
-  // ─── Schema version warning banner ───────────────────────────────────────
-
-  function _maybeShowSchemaWarning(a) {
-    if (a.$schemaVersion === 1) return;
-    const main = document.getElementById('waid-main');
-    if (!main) return;
-    const banner = document.createElement('div');
-    banner.className = 'waid-schema-warning';
-    banner.textContent = 'Warning: this report was generated with schema version ' +
-      a.$schemaVersion + '. This viewer expects version 1. Some content may not display correctly.';
-    main.insertBefore(banner, main.firstChild);
-  }
-
-  // ─── Unhide sections after rendering ──────────────────────────────────────
-
-  function _unhideSections() {
-    document.querySelectorAll('[data-waid-section]').forEach(function (el) {
-      el.removeAttribute('hidden');
-    });
-  }
-
-  // ─── Global error handler ─────────────────────────────────────────────────
-
-  function _surfaceError(msg) {
-    const errEl = document.getElementById('waid-error');
-    if (errEl) {
-      const p = errEl.querySelector('p') || errEl;
-      p.textContent = msg || 'An unexpected error occurred.';
-      errEl.removeAttribute('hidden');
-    }
-  }
-
-  window.onerror = function (msg, src, line, col, err) {
-    _surfaceError(err ? err.message : String(msg));
-  };
-  window.onunhandledrejection = function (e) {
-    _surfaceError(e.reason ? String(e.reason.message || e.reason) : 'Unhandled promise rejection.');
-  };
-
-  // ─── Public API ───────────────────────────────────────────────────────────
-
-  window.WAID = {
-    _initialized: false,
-
-    init: function (analysisJson) {
-      if (this._initialized) return;
-      this._initialized = true;
-      _initialized = true;
-
-      const root = document.getElementById('waid-root');
-
-      // 1. Validate input
-      if (!analysisJson || typeof analysisJson !== 'object') {
-        if (root) root.dataset.waidState = 'error';
-        const errEl = document.getElementById('waid-error');
-        if (errEl) errEl.removeAttribute('hidden');
-        return;
-      }
-
-      _analysis = analysisJson;
-
-      // 2. Restore view + theme from localStorage
-      const savedView  = lsGet('waid-view');
-      const savedTheme = lsGet('waid-theme');
-      const view  = (savedView  === 'layman') ? 'layman' : 'technical';
-      const theme = (['light', 'dark', 'auto'].indexOf(savedTheme) !== -1) ? savedTheme : 'auto';
-
-      if (root) {
-        root.dataset.waidView  = view;
-        root.dataset.waidTheme = theme;
-      }
-
-      const viewToggle = document.getElementById('waid-view-toggle');
-      if (viewToggle) viewToggle.setAttribute('aria-pressed', String(view === 'layman'));
-      _updateThemeIcon(theme);
-
-      // 3. Populate page chrome
-      const titleStr = (analysisJson.projectName || 'Project') + ' — Under the Hood';
-      document.title = titleStr;
-      const titleEl = document.getElementById('waid-title');
-      if (titleEl) titleEl.textContent = titleStr;
-
-      const schemaMeta = document.querySelector('meta[name="waid:schema-version"]');
-      if (schemaMeta) schemaMeta.setAttribute('content', String(analysisJson.$schemaVersion || ''));
-
-      // 4. Render each section
-      _renderOverview(analysisJson);
-      _renderTechStack(analysisJson);
-      _renderArchitecture(analysisJson);
-      _renderNarrativeAndEntries(analysisJson, 'algorithms', 'algorithms', 'tpl-algo-entry', function (e) {
-        return { name: e.name || '', technical: e.technical || '', layman: e.layman || '', complexity: '', location: '' };
-      });
-      _renderNarrativeAndEntries(analysisJson, 'methodologies', 'methodologies', 'tpl-method-entry', function (e) {
-        return { name: e.name || '', technical: e.technical || '', layman: e.layman || '' };
-      });
-      _renderNarrativeAndEntries(analysisJson, 'pattern_rationale', 'pattern-rationale', 'tpl-pattern-entry', function (e) {
-        return { pattern: e.pattern || '', technical: e.rationale_technical || '', layman: e.rationale_layman || '', why: '', tradeoffs: '' };
-      });
-      _renderPitfalls(analysisJson);
-      _renderGlossary(analysisJson);
-      _renderQuiz(analysisJson);
-
-      // Unhide sections
-      _unhideSections();
-
-      // 5. Build TOC
-      _buildToc();
-
-      // 6. Wire event listeners
-      _wireCollapseToggles();
-      _wireViewToggle();
-      _wireThemeToggle();
-      _wireGlossaryTooltips();
-      _wireQuiz();
-      _wireDiagramZoom();
-
-      // 7. Start scroll-spy
-      _startScrollSpy();
-
-      // 8. Build glossary index (used for tooltips)
-      _buildGlossaryIndex(analysisJson);
-
-      // 9. Show schema warning if needed (Mermaid already triggered in _renderArchitecture)
-      _maybeShowSchemaWarning(analysisJson);
-
-      // 10. Wire OS theme change listener
-      _wireMediaQuery();
-
-      // 11. Set ready state
-      if (root) root.dataset.waidState = 'ready';
-
-      // 12. Fire waid:ready
-      emit('waid:ready', {});
-    },
-
-    setView: function (view) {
-      if (view !== 'technical' && view !== 'layman') {
-        console.warn('[WAID] setView: invalid value "' + view + '". Use "technical" or "layman".');
-        return;
-      }
-      const root = document.getElementById('waid-root');
-      if (root) root.dataset.waidView = view;
-      const btn = document.getElementById('waid-view-toggle');
-      if (btn) btn.setAttribute('aria-pressed', String(view === 'layman'));
-      lsSet('waid-view', view);
-      emit('waid:view-change', { view: view });
-    },
-
-    setTheme: function (theme) {
-      if (theme !== 'light' && theme !== 'dark' && theme !== 'auto') {
-        console.warn('[WAID] setTheme: invalid value "' + theme + '". Use "light", "dark", or "auto".');
-        return;
-      }
-      const root = document.getElementById('waid-root');
-      if (root) root.dataset.waidTheme = theme;
-      _updateThemeIcon(theme);
-      lsSet('waid-theme', theme);
-      emit('waid:theme-change', { theme: theme });
-      // Re-render Mermaid with new theme
-      _rerenderMermaid();
-    },
-
-    getState: function () {
-      const root = document.getElementById('waid-root');
-      return {
-        view:              root ? root.dataset.waidView  : 'technical',
-        theme:             root ? root.dataset.waidTheme : 'auto',
-        collapsedSections: new Set(_collapsedSections)
-      };
-    }
-  };
-
-  // ─── Auto-init on DOMContentLoaded ───────────────────────────────────────
-
-  document.addEventListener('DOMContentLoaded', function () {
-    const dataEl = document.getElementById('waid-data');
-    let parsed = null;
-    if (dataEl) {
-      const text = dataEl.textContent.trim();
-      if (text && text !== '__WAID_ANALYSIS_JSON__') {
-        try {
-          parsed = JSON.parse(text);
-        } catch (e) {
-          parsed = null;
-        }
-      }
-    }
-    window.WAID.init(parsed);
+    // if multiple paragraphs, split on \n\n; otherwise single paragraph.
+    var paras = String(raw).split(/\n\n+/);
+    var html = paras.map(function(p){ return "<p>" + annotateGlossary(escapeHTML(p)) + "</p>"; }).join("");
+    el.innerHTML = html;
   });
+
+  /* ---------- header meta ---------- */
+  (function meta(){
+    var name = data.projectName || "Project";
+    document.title = "Under the Hood — " + name;
+    var t = document.getElementById("waid-project-title"); if (t) t.textContent = name;
+    var s = document.getElementById("waid-stack-label"); if (s) s.textContent = data.detectedStack || "";
+    var p = document.getElementById("waid-project-label"); if (p) p.textContent = name;
+    var when = data.generatedAt ? new Date(data.generatedAt) : null;
+    var pretty = when ? when.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) : "";
+    var g = document.getElementById("waid-generated-label"); if (g) g.textContent = pretty;
+    var f = document.getElementById("waid-footer-meta");     if (f) f.textContent = name + (pretty ? " · " + pretty : "");
+  })();
+
+  /* ---------- tech stack grid ---------- */
+  (function techStack(){
+    var grid = document.getElementById("waid-tech-grid");
+    if (!grid) return;
+    var entries = (get("tech_stack.entries") || []);
+    if (!entries.length) {
+      grid.innerHTML = '<div class="waid-empty">No dependencies declared.</div>';
+      return;
+    }
+    grid.innerHTML = entries.map(function(e){
+      var initial = (e.name || "?").trim().charAt(0).toUpperCase();
+      return ''
+        + '<div class="waid-stack-card">'
+        +   '<div class="waid-stack-card__glyph" aria-hidden="true">' + escapeHTML(initial) + '</div>'
+        +   '<div>'
+        +     '<div class="waid-stack-card__name">' + escapeHTML(e.name || "") + '</div>'
+        +     '<div class="waid-stack-card__role">' + escapeHTML(e.role || "") + '</div>'
+        +   '</div>'
+        +   (e.version ? '<div class="waid-stack-card__ver">' + escapeHTML(e.version) + '</div>' : '<div></div>')
+        + '</div>';
+    }).join("");
+  })();
+
+  /* ---------- algorithms list ---------- */
+  (function algos(){
+    var box = document.getElementById("waid-algo-list");
+    if (!box) return;
+    var entries = (get("algorithms.entries") || []);
+    if (!entries.length) {
+      box.innerHTML = '<div class="waid-empty">No notable algorithms in this project.</div>';
+      return;
+    }
+    box.innerHTML = entries.map(function(e){
+      var head = ''
+        + '<div class="waid-card__head">'
+        +   '<h3 class="waid-h3">' + escapeHTML(e.name || "") + '</h3>'
+        +   (e.complexity ? '<span class="waid-badge waid-badge--accent">' + escapeHTML(e.complexity) + '</span>' : '')
+        + '</div>';
+      var views = ''
+        + '<div class="waid-views">'
+        +   '<div class="waid-view waid-body" data-view="technical"><p>' + annotateGlossary(escapeHTML(e.technical || "")) + '</p></div>'
+        +   '<div class="waid-view waid-body" data-view="layman"><p>'    + annotateGlossary(escapeHTML(e.layman || "")) + '</p></div>'
+        + '</div>';
+      return '<div class="waid-card">' + head + views + '</div>';
+    }).join("");
+  })();
+
+  /* ---------- methodologies ---------- */
+  (function methods(){
+    var box = document.getElementById("waid-method-list");
+    if (!box) return;
+    var entries = (get("methodologies.entries") || []);
+    if (!entries.length) {
+      box.innerHTML = '<div class="waid-empty">No methodology entries.</div>';
+      return;
+    }
+    box.innerHTML = entries.map(function(e){
+      return ''
+        + '<div class="waid-card">'
+        +   '<div class="waid-card__head"><h3 class="waid-h3">' + escapeHTML(e.name || "") + '</h3></div>'
+        +   '<div class="waid-views">'
+        +     '<div class="waid-view waid-body" data-view="technical"><p>' + annotateGlossary(escapeHTML(e.technical || "")) + '</p></div>'
+        +     '<div class="waid-view waid-body" data-view="layman"><p>'    + annotateGlossary(escapeHTML(e.layman || "")) + '</p></div>'
+        +   '</div>'
+        + '</div>';
+    }).join("");
+  })();
+
+  /* ---------- pattern rationale ---------- */
+  (function patterns(){
+    var box = document.getElementById("waid-pattern-list");
+    if (!box) return;
+    var entries = (get("pattern_rationale.entries") || []);
+    if (!entries.length) {
+      box.innerHTML = '<div class="waid-empty">No pattern entries.</div>';
+      return;
+    }
+    box.innerHTML = entries.map(function(e){
+      var trade = e.tradeoffs
+        ? '<p style="margin-top:10px;color:var(--waid-color-text-muted);font-size:var(--waid-fs-caption);"><strong style="color:var(--waid-color-text);">Trade-off — </strong>' + annotateGlossary(escapeHTML(e.tradeoffs)) + '</p>'
+        : '';
+      return ''
+        + '<div class="waid-card">'
+        +   '<div class="waid-card__head"><h3 class="waid-h3">' + escapeHTML(e.pattern || "") + '</h3></div>'
+        +   '<div class="waid-views">'
+        +     '<div class="waid-view waid-body" data-view="technical"><p>' + annotateGlossary(escapeHTML(e.rationale_technical || "")) + '</p>' + trade + '</div>'
+        +     '<div class="waid-view waid-body" data-view="layman"><p>'    + annotateGlossary(escapeHTML(e.rationale_layman || "")) + '</p></div>'
+        +   '</div>'
+        + '</div>';
+    }).join("");
+  })();
+
+  /* ---------- pitfalls ---------- */
+  (function pitfalls(){
+    var box = document.getElementById("waid-pitfall-list");
+    if (!box) return;
+    var entries = (get("pitfalls.entries") || []);
+    if (!entries.length) {
+      box.innerHTML = '<div class="waid-empty">No pitfalls flagged. Either the project is unusually clean, or this analysis was minimal.</div>';
+      return;
+    }
+    // sort high → medium → low
+    var rank = { high: 0, medium: 1, low: 2 };
+    entries.sort(function(a,b){ return (rank[a.severity]||9) - (rank[b.severity]||9); });
+
+    box.innerHTML = entries.map(function(e){
+      var sev = (e.severity || "low").toLowerCase();
+      return ''
+        + '<div class="waid-card waid-pitfall" data-severity="' + escapeHTML(sev) + '">'
+        +   '<div class="waid-card__head">'
+        +     '<h3 class="waid-h3">' + escapeHTML(e.title || "") + '</h3>'
+        +     '<span class="waid-sev" data-severity="' + escapeHTML(sev) + '">' + escapeHTML(sev) + '</span>'
+        +   '</div>'
+        +   '<div class="waid-views">'
+        +     '<div class="waid-view waid-body" data-view="technical"><p>' + annotateGlossary(escapeHTML(e.technical || "")) + '</p></div>'
+        +     '<div class="waid-view waid-body" data-view="layman"><p>'    + annotateGlossary(escapeHTML(e.layman || "")) + '</p></div>'
+        +   '</div>'
+        + '</div>';
+    }).join("");
+  })();
+
+  /* ---------- glossary list ---------- */
+  (function gloss(){
+    var box = document.getElementById("waid-gloss-list");
+    if (!box) return;
+    var entries = (data.glossary || []);
+    if (!entries.length) {
+      box.innerHTML = '<div class="waid-empty" style="grid-column:1/-1;">No glossary terms in this report.</div>';
+      box.style.border = "0";
+      box.style.background = "transparent";
+      return;
+    }
+    var html = "";
+    entries.forEach(function(g){
+      html += ''
+        + '<div class="waid-gloss__term">' + escapeHTML(g.term) + '</div>'
+        + '<div class="waid-gloss__def">'
+        +   '<div class="waid-views">'
+        +     '<div class="waid-view" data-view="technical">' + escapeHTML(g.technical || "") + '</div>'
+        +     '<div class="waid-view" data-view="layman">'    + escapeHTML(g.layman || "")    + '</div>'
+        +   '</div>'
+        + '</div>';
+    });
+    box.innerHTML = html;
+  })();
+
+  /* ---------- quiz ---------- */
+  (function quiz(){
+    var box = document.getElementById("waid-quiz-list");
+    if (!box) return;
+    var entries = (data.quiz || []);
+    if (!entries.length) {
+      box.innerHTML = '<div class="waid-empty">No quiz questions in this report.</div>';
+      return;
+    }
+    box.innerHTML = entries.map(function(q, i){
+      var choices = (q.choices || []).map(function(c, j){
+        return ''
+          + '<li>'
+          +   '<button class="waid-quiz__choice" data-q="' + i + '" data-c="' + j + '">'
+          +     '<span class="waid-quiz__icon" aria-hidden="true">' + String.fromCharCode(65 + j) + '</span>'
+          +     '<span>' + escapeHTML(c) + '</span>'
+          +   '</button>'
+          + '</li>';
+      }).join("");
+      return ''
+        + '<div class="waid-quiz__card" data-q="' + i + '">'
+        +   '<div class="waid-quiz__qmeta">Question ' + (i + 1) + ' / ' + entries.length + '</div>'
+        +   '<p class="waid-quiz__q">' + escapeHTML(q.question || "") + '</p>'
+        +   '<ul class="waid-quiz__choices">' + choices + '</ul>'
+        +   '<div class="waid-quiz__explain" data-q="' + i + '">'
+        +     '<div class="waid-views">'
+        +       '<div class="waid-view" data-view="technical">' + annotateGlossary(escapeHTML(q.explanation_technical || "")) + '</div>'
+        +       '<div class="waid-view" data-view="layman">'    + annotateGlossary(escapeHTML(q.explanation_layman || ""))    + '</div>'
+        +     '</div>'
+        +   '</div>'
+        + '</div>';
+    }).join("");
+
+    box.addEventListener("click", function(ev){
+      var btn = ev.target.closest(".waid-quiz__choice");
+      if (!btn) return;
+      var qi = +btn.getAttribute("data-q");
+      var ci = +btn.getAttribute("data-c");
+      var q = entries[qi];
+      if (!q) return;
+      var card = btn.closest(".waid-quiz__card");
+      var allChoices = card.querySelectorAll(".waid-quiz__choice");
+      // already answered? bail.
+      var alreadyAnswered = false;
+      allChoices.forEach(function(c){ if (c.disabled) alreadyAnswered = true; });
+      if (alreadyAnswered) return;
+
+      var correctIdx = q.answerIndex;
+      allChoices.forEach(function(c, idx){
+        c.disabled = true;
+        if (idx === correctIdx) c.setAttribute("data-state", idx === ci ? "correct" : "reveal");
+        else if (idx === ci) c.setAttribute("data-state", "wrong");
+      });
+      var explain = card.querySelector(".waid-quiz__explain");
+      if (explain) explain.classList.add("is-visible");
+    });
+    // keyboard support comes free via <button>.
+  })();
+
+  /* ============================================================
+     view toggle (Technical ↔ Layman/Plain)
+     ============================================================ */
+  (function viewToggle(){
+    var html = document.documentElement;
+    var stored = null;
+    try { stored = localStorage.getItem("waid:view"); } catch (e) {}
+    if (stored === "technical" || stored === "layman") html.setAttribute("data-view", stored);
+
+    var buttons = document.querySelectorAll(".waid-viewtoggle button[data-view]");
+    function setView(v){
+      html.setAttribute("data-view", v);
+      try { localStorage.setItem("waid:view", v); } catch(e){}
+      buttons.forEach(function(b){
+        b.setAttribute("aria-pressed", b.getAttribute("data-view") === v ? "true" : "false");
+      });
+    }
+    setView(html.getAttribute("data-view") || "technical");
+    buttons.forEach(function(b){
+      b.addEventListener("click", function(){ setView(b.getAttribute("data-view")); });
+    });
+  })();
+
+  /* ============================================================
+     theme toggle (light / auto / dark)
+     ============================================================ */
+  (function themeToggle(){
+    var html = document.documentElement;
+    var stored = null;
+    try { stored = localStorage.getItem("waid:theme"); } catch (e) {}
+    if (stored === "light" || stored === "dark" || stored === "auto") html.setAttribute("data-theme", stored);
+
+    var buttons = document.querySelectorAll(".waid-themetoggle button[data-theme]");
+    function setTheme(t){
+      html.setAttribute("data-theme", t);
+      try { localStorage.setItem("waid:theme", t); } catch(e){}
+      buttons.forEach(function(b){
+        b.setAttribute("aria-pressed", b.getAttribute("data-theme") === t ? "true" : "false");
+      });
+      // re-render mermaid to pick up new colors
+      try { renderMermaid(); } catch(e){}
+    }
+    setTheme(html.getAttribute("data-theme") || "auto");
+    buttons.forEach(function(b){
+      b.addEventListener("click", function(){ setTheme(b.getAttribute("data-theme")); });
+    });
+
+    // react to system change when in auto
+    if (window.matchMedia) {
+      var mq = window.matchMedia("(prefers-color-scheme: dark)");
+      var handler = function(){
+        if (html.getAttribute("data-theme") === "auto") {
+          try { renderMermaid(); } catch(e){}
+        }
+      };
+      if (mq.addEventListener) mq.addEventListener("change", handler);
+      else if (mq.addListener) mq.addListener(handler);
+    }
+  })();
+
+  /* ============================================================
+     mermaid render (light + dark aware)
+     ============================================================ */
+  function isDarkActive() {
+    var t = document.documentElement.getAttribute("data-theme");
+    if (t === "dark") return true;
+    if (t === "light") return false;
+    return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+  }
+
+  function readVar(name) {
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  }
+
+  var mermaidSeq = 0;
+  function renderMermaid() {
+    if (typeof mermaid === "undefined") return;
+    var src = get("architecture.mermaid");
+    var holder = document.getElementById("waid-mermaid");
+    if (!holder) return;
+    if (!src || !String(src).trim()) {
+      holder.style.display = "none";
+      return;
+    }
+    holder.style.display = "";
+    var dark = isDarkActive();
+    mermaid.initialize({
+      startOnLoad: false,
+      theme: "base",
+      securityLevel: "strict",
+      fontFamily: readVar("--waid-font-sans") || "Inter, sans-serif",
+      themeVariables: {
+        background: "transparent",
+        primaryColor: dark ? "#1a2030" : "#ffffff",
+        primaryTextColor: dark ? "#e6e3dc" : "#1a1814",
+        primaryBorderColor: dark ? "#2e343e" : "#d6cfc1",
+        lineColor: dark ? "#5a6275" : "#94907f",
+        secondaryColor: dark ? "#1d222b" : "#f4f1ec",
+        tertiaryColor: dark ? "#0e1014" : "#fbfaf7",
+        edgeLabelBackground: dark ? "#161a21" : "#fbfaf7"
+      }
+    });
+    var id = "waid-mm-" + (++mermaidSeq);
+    holder.innerHTML = "";
+    try {
+      var p = mermaid.render(id, String(src));
+      if (p && typeof p.then === "function") {
+        p.then(function(res){
+          holder.innerHTML = res.svg;
+          if (typeof res.bindFunctions === "function") res.bindFunctions(holder);
+        }).catch(function(err){
+          holder.innerHTML = '<div class="waid-empty">Diagram failed to render.</div>';
+          console.error("mermaid:", err);
+        });
+      }
+    } catch (err) {
+      holder.innerHTML = '<div class="waid-empty">Diagram failed to render.</div>';
+      console.error("mermaid:", err);
+    }
+  }
+  // wait one tick to ensure mermaid script is loaded
+  if (document.readyState === "complete") renderMermaid();
+  else window.addEventListener("load", renderMermaid);
+
+  /* ============================================================
+     scroll-spy TOC
+     ============================================================ */
+  (function scrollSpy(){
+    var sections = document.querySelectorAll(".waid-section[id]");
+    var links = document.querySelectorAll(".waid-toc__item a");
+    if (!sections.length) return;
+    var byId = {};
+    links.forEach(function(a){
+      var id = a.getAttribute("href").slice(1);
+      byId[id] = a.parentElement;
+    });
+    var observer = new IntersectionObserver(function(entries){
+      // pick the topmost intersecting section
+      var visible = entries.filter(function(e){ return e.isIntersecting; });
+      if (!visible.length) return;
+      visible.sort(function(a,b){ return a.boundingClientRect.top - b.boundingClientRect.top; });
+      var id = visible[0].target.id;
+      links.forEach(function(a){ a.parentElement.classList.remove("is-active"); });
+      if (byId[id]) byId[id].classList.add("is-active");
+    }, {
+      rootMargin: "-30% 0px -55% 0px",
+      threshold: 0.01
+    });
+    sections.forEach(function(s){ observer.observe(s); });
+  })();
+
+  /* ============================================================
+     mobile TOC drawer
+     ============================================================ */
+  (function tocDrawer(){
+    var trigger = document.getElementById("waid-toc-trigger");
+    var toc = document.getElementById("waid-toc");
+    var backdrop = document.getElementById("waid-toc-backdrop");
+    if (!trigger || !toc || !backdrop) return;
+    function open(){ toc.classList.add("is-open"); backdrop.removeAttribute("hidden"); requestAnimationFrame(function(){ backdrop.classList.add("is-open"); }); trigger.setAttribute("aria-expanded","true"); }
+    function close(){ toc.classList.remove("is-open"); backdrop.classList.remove("is-open"); setTimeout(function(){ backdrop.setAttribute("hidden",""); }, 220); trigger.setAttribute("aria-expanded","false"); }
+    trigger.addEventListener("click", function(){ if (toc.classList.contains("is-open")) close(); else open(); });
+    backdrop.addEventListener("click", close);
+    toc.addEventListener("click", function(ev){
+      if (ev.target.closest("a")) close();
+    });
+    document.addEventListener("keydown", function(ev){ if (ev.key === "Escape") close(); });
+  })();
+
+  /* ============================================================
+     glossary tooltips
+     ============================================================ */
+  (function tooltips(){
+    var tip = document.getElementById("waid-tooltip");
+    if (!tip) return;
+    var current = null;
+
+    function position(target){
+      var r = target.getBoundingClientRect();
+      // measure tooltip
+      tip.style.left = "-9999px"; tip.style.top = "-9999px";
+      tip.classList.add("is-visible");
+      var tr = tip.getBoundingClientRect();
+      var x = r.left + r.width/2 - tr.width/2;
+      var y = r.top - tr.height - 10;
+      var below = false;
+      if (y < 8) { y = r.bottom + 10; below = true; }
+      x = Math.max(8, Math.min(window.innerWidth - tr.width - 8, x));
+      tip.style.left = x + "px";
+      tip.style.top  = y + "px";
+    }
+
+    function show(target){
+      var term = target.getAttribute("data-term");
+      var entry = glossaryByLower[term.toLowerCase()];
+      if (!entry) return;
+      var view = document.documentElement.getAttribute("data-view") || "technical";
+      var def = (view === "layman" ? entry.layman : entry.technical) || entry.technical || entry.layman || "";
+      tip.innerHTML = '<div class="waid-tooltip__term">' + escapeHTML(entry.term) + '</div>' + escapeHTML(def);
+      tip.setAttribute("aria-hidden", "false");
+      position(target);
+      current = target;
+    }
+    function hide(){
+      tip.classList.remove("is-visible");
+      tip.setAttribute("aria-hidden","true");
+      current = null;
+    }
+
+    document.addEventListener("mouseover", function(ev){
+      var t = ev.target.closest(".waid-glossary-ref");
+      if (t) show(t);
+    });
+    document.addEventListener("mouseout", function(ev){
+      var t = ev.target.closest(".waid-glossary-ref");
+      if (t && !t.contains(ev.relatedTarget)) hide();
+    });
+    document.addEventListener("focusin", function(ev){
+      var t = ev.target.closest(".waid-glossary-ref");
+      if (t) show(t);
+    });
+    document.addEventListener("focusout", function(ev){
+      var t = ev.target.closest(".waid-glossary-ref");
+      if (t) hide();
+    });
+    window.addEventListener("scroll", function(){ if (current) position(current); }, { passive: true });
+    window.addEventListener("resize", function(){ if (current) position(current); });
+  })();
 
 })();
