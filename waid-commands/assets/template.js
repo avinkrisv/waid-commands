@@ -114,7 +114,14 @@
     function renderWithMermaid() {
       if (typeof window.mermaid === 'undefined') return false;
       try {
-        window.mermaid.initialize({ startOnLoad: false, theme: resolveMermaidTheme() });
+        window.mermaid.initialize({
+          startOnLoad: false,
+          theme: resolveMermaidTheme(),
+          securityLevel: 'strict',
+          flowchart: { htmlLabels: false, useMaxWidth: true },
+          sequence: { useMaxWidth: true },
+          gantt: { useMaxWidth: true }
+        });
         // mermaid.render returns a Promise in v10+, or accepts a callback in older versions
         const result = window.mermaid.render('waid-mermaid-svg', source);
         if (result && typeof result.then === 'function') {
@@ -181,7 +188,14 @@
     if (!source) return;
     if (typeof window.mermaid === 'undefined') return;
     try {
-      window.mermaid.initialize({ startOnLoad: false, theme: resolveMermaidTheme() });
+      window.mermaid.initialize({
+          startOnLoad: false,
+          theme: resolveMermaidTheme(),
+          securityLevel: 'strict',
+          flowchart: { htmlLabels: false, useMaxWidth: true },
+          sequence: { useMaxWidth: true },
+          gantt: { useMaxWidth: true }
+        });
       const result = window.mermaid.render('waid-mermaid-svg-2', source);
       if (result && typeof result.then === 'function') {
         result.then(function (out) {
