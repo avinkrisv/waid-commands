@@ -9,9 +9,11 @@
   <style id="waid-style">__WAID_TEMPLATE_CSS__</style>
   <script id="waid-data" type="application/json">__WAID_ANALYSIS_JSON__</script>
   <style>
-    /* View-conditional content — show/hide is CSS-only */
-    [data-waid-view="technical"] { display: none; }
-    [data-waid-view="layman"]    { display: none; }
+    /* View-conditional content — show/hide is CSS-only.
+       Scope hide rules to descendants of #waid-root so they don't match
+       #waid-root itself (which carries data-waid-view to drive the toggle). */
+    #waid-root [data-waid-view="technical"],
+    #waid-root [data-waid-view="layman"] { display: none; }
     #waid-root[data-waid-view="technical"] [data-waid-view="technical"] { display: revert; }
     #waid-root[data-waid-view="layman"]    [data-waid-view="layman"]    { display: revert; }
 
