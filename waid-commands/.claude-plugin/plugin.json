@@ -3,10 +3,10 @@
   "version": "0.1.0",
   "description": "What Am I Doing — explains the project you're in. Generates a self-contained HTML report with parallel Technical and Layman views covering tech stack, architecture, methodologies, pattern rationale, pitfalls, glossary, and quiz.",
   "author": {
-    "name": "waid-commands"
+    "name": "avinkrisv"
   },
-  "homepage": "",
-  "repository": "",
+  "homepage": "https://github.com/avinkrisv/waid-commands",
+  "repository": "https://github.com/avinkrisv/waid-commands",
   "license": "MIT",
   "keywords": ["education", "documentation", "vibe-coding", "report"]
 }
